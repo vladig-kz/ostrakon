@@ -5,7 +5,6 @@ kick a suspect, and the bot enforces the outcome. Pure PHP, no frameworks, desig
 run on ordinary shared hosting.
 
 - Full specification (Russian): [`SPEC.md`](SPEC.md)
-- Implementation notes (Russian): [`CLAUDE_CODE_BRIEF.md`](CLAUDE_CODE_BRIEF.md)
 - Reputation ("elder") formulas (Russian): [`FORMULAS.md`](FORMULAS.md)
 - Russian README (may lag behind this one): [`README_RUS.md`](README_RUS.md)
 
