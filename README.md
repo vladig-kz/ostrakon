@@ -16,6 +16,18 @@ run on ordinary shared hosting.
 
 ---
 
+## A bit of history
+
+The name **Ostrakon** goes back to classical Athens of the 5th century BC and its procedure of
+*ostracism* (*ostrakismós*): the people's assembly could banish a person from the city for ten
+years if their influence seemed dangerous to the democracy. People voted by scratching the name
+of the one to be exiled onto a shard of broken pottery — that shard is called an *ostrakon*
+(*óstrakon*). The exile was not a punishment in the usual sense: the person lost neither
+citizenship nor property and could return after ten years. This bot is a digital ostrakon (a
+potsherd ballot): the community likewise decides together who has no place in the chat.
+
+---
+
 ## How it works
 
 - **In the group, the bot does exactly one thing: it starts a vote.** A member replies

@@ -210,6 +210,8 @@ return [
     // Help
     'panel_help'        => 'Help',
     'panel_help_more'   => 'More',
+    'help_history_t'    => 'Where the name comes from',
+    'help_history_b'    => 'The name “Ostrakon” goes back to classical Athens of the 5th century BC and its procedure of ostracism (ostrakismós): the people’s assembly could banish a person from the city for ten years if their influence seemed dangerous to the democracy. People voted by scratching the name of the one to be exiled onto a shard of broken pottery — that shard is called an ostrakon (óstrakon). The exile was not a punishment in the usual sense: the person lost neither citizenship nor property and could return after ten years. This bot is a digital ostrakon (a potsherd ballot): the community likewise decides together who has no place in the chat.',
     'help_modes_t'      => 'Modes: light and full',
     'help_modes_b'      => 'light — the bot only reacts to a vote being started (a reply to the offender’s message mentioning the bot). full — additionally tracks members’ activity and computes a score, which grants the “elder” status with a higher vote weight.',
     'help_privacy_t'    => 'Privacy mode and full mode',

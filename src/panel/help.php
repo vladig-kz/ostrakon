@@ -8,6 +8,7 @@ $lng  = Panel::lang();
 $base = Panel::baseUrl();
 
 $sections = [
+    'history'      => ['help_history_t', 'help_history_b'],
     'modes'        => ['help_modes_t', 'help_modes_b'],
     'privacy'      => ['help_privacy_t', 'help_privacy_b'],
     'voting'       => ['help_voting_t', 'help_voting_b'],
