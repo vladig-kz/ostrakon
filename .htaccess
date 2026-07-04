@@ -1,0 +1,39 @@
+# Ostrakon — root .htaccess (Apache).
+# NOTE: on Nginx the .htaccess directives DON'T apply — for Nginx you must lock down the
+# config/, src/, logs/ directories and service files in the server config
+# (see README, the hosting requirements section).
+
+# Don't serve directory listings
+Options -Indexes
+
+# Deny access to "dot" files (.htaccess, .git, .env, etc.)
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Deny direct web access to service file types
+<FilesMatch "\.(md|sql|log)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Front controller: anything that is NOT an existing file/directory goes to index.php.
+# Real files (webhook.php, cron.php, install.php, log.php, inspect.php, assets/…) and
+# directories are served directly. Works both at the domain root and in a subfolder.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>

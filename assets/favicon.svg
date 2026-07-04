@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t d">
+  <title id="t">Ostrakon</title>
+  <desc id="d">A black-figure pottery shard: bare terracotta clay with a roughly scraped patch of black glaze, and a verdict check incised through it.</desc>
+  <defs>
+    <linearGradient id="clay" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#cf7a41"/>
+      <stop offset="1" stop-color="#9c4a24"/>
+    </linearGradient>
+    <clipPath id="shard">
+      <path d="M13 15 Q32 9 50 11 Q57 28 55 46 Q35 52 17 55 Q9 34 13 15 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- clay body: a crooked, gently broken inner fragment (no rim) -->
+  <path d="M13 15 Q32 9 50 11 Q57 28 55 46 Q35 52 17 55 Q9 34 13 15 Z"
+        fill="url(#clay)" stroke="#5a2810" stroke-width="1.2" stroke-linejoin="round"/>
+
+  <!-- black glaze: a patch scraped by hand — a rough, uneven edge (not parallel to the break),
+       leaving plenty of bare clay around it -->
+  <g clip-path="url(#shard)">
+    <path d="M21 19 L28 17 L36 19 L43 18 L47 24 L45 30 L48 37 L43 43 L36 42
+             L30 45 L24 42 L20 44 L18 37 L20 31 L17 25 Z" fill="#1b1714"/>
+    <ellipse cx="29" cy="20" rx="13" ry="6" fill="#ffffff" opacity="0.07"/>
+  </g>
+
+  <!-- verdict incised through the glaze — a bold check cut by a blade. The left arm is clean
+       and straight; the long right arm bows into a shallow arc following the shard's domed
+       surface, but the blade chatters over it, so its edges jump slightly off the smooth curve
+       (visible enlarged, clean at favicon size). -->
+  <path d="M23 31 L30.4 36.5 L35.18 33.7 L37.29 28.96 L40.82 25.33 L42 20 L44 22.5
+           L41.29 28.05 L39.36 34.24 L34.7 38.42 L30.5 43 Z" fill="#d9803f"/>
+</svg>

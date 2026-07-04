@@ -1,0 +1,71 @@
+/* Ostrakon — a thin layer on top of Bulma (only what Bulma lacks). */
+
+/* Header */
+.topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 24px;
+    background: rgba(255, 255, 255, .9);
+    backdrop-filter: saturate(160%) blur(8px);
+    border-bottom: 1px solid #e5e7eb;
+}
+.topbar .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -.01em;
+    color: #1f2937;
+    text-decoration: none;
+}
+.topbar .brand-mark {
+    display: block;
+    width: 26px; height: 26px;
+}
+.topbar .spacer { flex: 1; }
+.topbar .me { color: #6b7280; font-size: 15px; }
+.topbar .btn-link { color: #15803d; text-decoration: none; font-weight: 500; }
+.topbar .btn-link:hover { text-decoration: underline; }
+.topbar .lang-current { color: #111827; font-weight: 700; cursor: default; }
+
+/* Sortable headers + indicator (arrow + superscript level) */
+table.table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+table.table th.sortable:hover { color: #15803d; }
+.sort-ind { color: #15803d; font-weight: 700; }
+.sort-ind sup { font-size: .7em; }
+
+/* Compact action buttons in the table: same font, smaller padding */
+table.table td .button { height: auto; min-height: 0; padding: .3em .8em; }
+
+/* Telegram Login Widget */
+.tg-login { margin-top: 18px; min-height: 48px; }
+
+/* Simulator: a long slider + a precise-entry number field */
+.sim-row { display: flex; align-items: center; gap: 14px; }
+.sim-slider { flex: 1 1 auto; width: 100%; min-width: 0; height: 6px; }
+.sim-num { flex: 0 0 auto; max-width: 110px; }
+.sim-unit { flex: 0 0 40px; color: #6b7280; }
+
+/* ---- Responsive / mobile (Bulma's mobile breakpoint is ≤ 768px) ---- */
+@media screen and (max-width: 768px) {
+    /* Topbar: tighten, and let the brand keep its own row while the rest wraps below. */
+    .topbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px; }
+    .topbar .spacer { flex-basis: 100%; height: 0; }
+    .topbar .brand { font-size: 17px; }
+    .topbar .me { font-size: 13px; }
+
+    /* Denser tables so more fits before horizontal scroll kicks in (.table-container scrolls). */
+    table.table td, table.table th { padding: .45em .55em; font-size: 14px; }
+    table.table td .button { padding: .3em .6em; font-size: 13px; }
+}
+
+/* Simulator row: on very narrow screens put the slider on its own line. */
+@media screen and (max-width: 480px) {
+    .sim-row { flex-wrap: wrap; }
+    .sim-slider { flex-basis: 100%; }
+}

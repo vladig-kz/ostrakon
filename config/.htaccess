@@ -1,0 +1,9 @@
+# Fully deny direct web access to the config/ directory (holds secrets).
+# Files are included from PHP via the filesystem, not needed over HTTP.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
