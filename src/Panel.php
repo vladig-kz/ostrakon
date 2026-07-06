@@ -81,6 +81,14 @@ final class Panel
 
     private static function dispatch(string $route, string $method): void
     {
+        // Secret superadmin (operator) page — served at a configurable path (obscurity) and
+        // protected by HTTP Basic Auth. Checked first so the slug can be anything. Disabled and
+        // indistinguishable from any other 404 when SUPERADMIN_PATH is unset.
+        $superPath = trim((string) Config::value('bot', 'SUPERADMIN_PATH', ''), '/');
+        if ($superPath !== '' && $route === $superPath) {
+            self::superadminPage();
+            return;
+        }
         if ($route === '' || $route === 'admin') {
             self::home();
             return;
@@ -242,6 +250,122 @@ final class Panel
             'groups'     => $groups,
             'addToGroup' => $botUser !== '' ? ('https://t.me/' . $botUser . '?startgroup=true') : '',
         ]);
+    }
+
+    /**
+     * Secret superadmin (operator) overview: every group the bot serves, with each group's
+     * owners/admins — e.g. to warn them before shutting the hosting down. The operator needs to
+     * know nothing about Telegram: group/admin data is fetched server-side with the bot token.
+     *
+     * Access: HTTP Basic Auth against SUPERADMIN_TOKEN, at the secret SUPERADMIN_PATH. No Telegram
+     * login is involved.
+     */
+    private static function superadminPage(): void
+    {
+        if (!self::superadminAuth()) {
+            return; // 401 challenge / 404 already sent
+        }
+
+        $groups = GroupManager::hosterGroups();
+
+        // Right pane: the roster of one selected group — only if it's really one we serve.
+        $known = [];
+        foreach ($groups as $g) {
+            $known[$g['chat_id']] = $g;
+        }
+        $sel     = (int) ($_GET['g'] ?? 0);
+        $current = ($sel !== 0 && isset($known[$sel])) ? $known[$sel] : null;
+        $members = $current !== null ? self::hosterGroupMembers($sel) : [];
+
+        self::render('superadmin', [
+            'title'   => Lang::get('panel_hoster', self::lang()),
+            'groups'  => $groups,
+            'current' => $current,
+            'members' => $members,
+        ]);
+    }
+
+    /**
+     * HTTP Basic Auth for the superadmin page. The browser sends base64("login:password"); we
+     * compare it constant-time against SUPERADMIN_TOKEN (which is stored in exactly that form).
+     * On CGI/FastCGI PHP_AUTH_* is often empty and the header is only visible via HTTP_AUTHORIZATION
+     * (see the .htaccess pass-through rule) — we read both. Sends the response itself: 404 when the
+     * feature is off (never reached here — path guard covers it — but kept defensively), 401 with a
+     * challenge otherwise. Returns true only on a valid match.
+     */
+    private static function superadminAuth(): bool
+    {
+        $expected = (string) Config::value('bot', 'SUPERADMIN_TOKEN', '');
+        if ($expected === '') {
+            self::error(404, Lang::get('panel_not_found', self::lang()));
+            return false;
+        }
+        $given = self::basicAuthBase64();
+        if ($given !== '' && hash_equals($expected, $given)) {
+            return true;
+        }
+        header('WWW-Authenticate: Basic realm="Restricted area", charset="UTF-8"');
+        http_response_code(401);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "Authentication required.\n";
+        return false;
+    }
+
+    /** base64("login:password") from the Basic Authorization header (CGI-safe), or '' if absent. */
+    private static function basicAuthBase64(): string
+    {
+        if (isset($_SERVER['PHP_AUTH_USER'])) {
+            return base64_encode((string) $_SERVER['PHP_AUTH_USER'] . ':' . (string) ($_SERVER['PHP_AUTH_PW'] ?? ''));
+        }
+        $h = (string) ($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+        if (stripos($h, 'Basic ') === 0) {
+            return trim(substr($h, 6));
+        }
+        return '';
+    }
+
+    /**
+     * Live owner+admin roster of one group for the hoster page: owner (creator) first, then admins
+     * by @username (A→Z, no-username last). Bots are dropped (pointless to notify). One
+     * getChatAdministrators call; for an inactive group (bot removed) it fails → empty roster.
+     *
+     * @return array<int, array{user_id:int, username:string, name:string, status:string, title:string}>
+     */
+    private static function hosterGroupMembers(int $chatId): array
+    {
+        $admins = Bot::call('getChatAdministrators', ['chat_id' => $chatId], true);
+        if (!is_array($admins)) {
+            return [];
+        }
+        $out = [];
+        foreach ($admins as $a) {
+            $u = $a['user'] ?? [];
+            if (!empty($u['is_bot'])) {
+                continue;
+            }
+            $uid = (int) ($u['id'] ?? 0);
+            if ($uid === 0) {
+                continue;
+            }
+            $out[] = [
+                'user_id'  => $uid,
+                'username' => (string) ($u['username'] ?? ''),
+                'name'     => trim((string) ($u['first_name'] ?? '') . ' ' . (string) ($u['last_name'] ?? '')),
+                'status'   => (string) ($a['status'] ?? ''),
+                'title'    => (string) ($a['custom_title'] ?? ''),
+            ];
+        }
+        usort($out, static function (array $x, array $y): int {
+            $xo = $x['status'] === 'creator' ? 0 : 1; // owner first
+            $yo = $y['status'] === 'creator' ? 0 : 1;
+            if ($xo !== $yo) {
+                return $xo <=> $yo;
+            }
+            $xu = $x['username'] !== '' ? strtolower($x['username']) : "\xff"; // empty usernames sort last
+            $yu = $y['username'] !== '' ? strtolower($y['username']) : "\xff";
+            return $xu <=> $yu;
+        });
+        return $out;
     }
 
     /** Landing page for a specific group. */

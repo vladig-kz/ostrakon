@@ -466,6 +466,42 @@ final class GroupManager
         return $out;
     }
 
+    /**
+     * Every group the bot has ever been connected to — for the hoster overview page. Includes
+     * inactive groups (bot removed) so the operator sees them too. "last_activity" is the latest
+     * of: a counted message, a vote start, or when the bot was added — enough to tell "went quiet
+     * a year ago" from "yesterday". Ordered active-first, then most-recently-active. DB only (no
+     * live API calls); the admin roster is fetched live per selected group by the panel.
+     *
+     * @return array<int, array{chat_id:int, title:?string, is_active:int, last_activity:string}>
+     */
+    public static function hosterGroups(): array
+    {
+        $groups = DB::table('groups');
+        $msgs   = DB::table('messages');
+        $votes  = DB::table('votes');
+        $rows = DB::fetchAll(
+            "SELECT g.chat_id, g.title, g.is_active,
+                    GREATEST(
+                        COALESCE((SELECT MAX(m.sent_at)    FROM $msgs  m WHERE m.chat_id = g.chat_id), g.added_at),
+                        COALESCE((SELECT MAX(v.started_at)  FROM $votes v WHERE v.chat_id = g.chat_id), g.added_at),
+                        g.added_at
+                    ) AS last_activity
+             FROM $groups g
+             ORDER BY g.is_active DESC, last_activity DESC"
+        );
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'chat_id'       => (int) $r['chat_id'],
+                'title'         => isset($r['title']) ? (string) $r['title'] : null,
+                'is_active'     => (int) $r['is_active'],
+                'last_activity' => (string) $r['last_activity'],
+            ];
+        }
+        return $out;
+    }
+
     // =====================================================================
     // Participant actions (by-id) — reused by the web panel.
     // =====================================================================

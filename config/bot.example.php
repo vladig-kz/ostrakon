@@ -35,9 +35,20 @@ return [
     // X-Telegram-Bot-Api-Secret-Token header on every incoming update.
     'WEBHOOK_SECRET' => 'changeme-random-string',
 
-    // Gate for HTTP access to cron.php / install.php / migrations/run.php and for the
-    // worker self-trigger. NOT via Telegram.
-    'SUPERADMIN_TOKEN' => 'changeme-superadmin-token',
+    // Superadmin (operator) credentials — a single value that serves two purposes:
+    //   1) gate for HTTP access to cron.php / install.php / migrations/run.php / log.php and for
+    //      the worker self-trigger (passed as ?token=...);
+    //   2) HTTP Basic Auth for the secret superadmin page (see SUPERADMIN_PATH below).
+    // The value is base64("login:password") — exactly the Basic Auth format. Leave it EMPTY on a
+    // fresh install: the first run of install.php (web) will ask you for a login + password and
+    // write the value here for you. (Or generate it via CLI: `php install.php gentoken`.)
+    'SUPERADMIN_TOKEN' => '',
+
+    // Secret address of the superadmin page (a random slug, e.g. "a7f3k9d2c1..."). The page is
+    // then served at APP_URL/<this-slug> and is protected by HTTP Basic Auth (SUPERADMIN_TOKEN).
+    // Keeping the address secret is an extra layer on top of the password. Leave EMPTY to disable
+    // the page entirely (any request is then a plain 404). install.php fills this in on first run.
+    'SUPERADMIN_PATH' => '',
 
     // Logging level (threshold): trace | debug | info | warning | error | fatal.
     // Messages at or above the given severity are written. Use 'trace'/'debug' while

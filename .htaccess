@@ -33,6 +33,13 @@ Options -Indexes
 # directories are served directly. Works both at the domain root and in a subfolder.
 <IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # Pass the HTTP Basic "Authorization" header to PHP. On CGI/FastCGI it is otherwise
+    # dropped, so $_SERVER['PHP_AUTH_USER'] stays empty and the superadmin page's Basic Auth
+    # can't work. (Apache 2.4.13+ also offers "CGIPassAuth On" as an alternative.)
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^ index.php [L]

@@ -106,7 +106,7 @@ final class Handler
         $rawText = ltrim((string) ($message['text'] ?? $message['caption'] ?? ''));
         if (self::mentionsBot($message) && !str_starts_with($rawText, '/')) {
             Logger::debug('Handler: bot mentioned without a valid trigger → how-to hint', ['chat_id' => $chatId]);
-            VoteManager::hintHowToVote($chatId);
+            VoteManager::hintHowToVote($chatId, VoteManager::threadOf($message));
             return;
         }
 

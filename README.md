@@ -32,7 +32,8 @@ potsherd ballot): the community likewise decides together who has no place in th
 
 - **In the group, the bot does exactly one thing: it starts a vote.** A member replies
   to the offender's message with **just** the bot's mention (`@yourbot` and nothing else) —
-  the bot posts a vote with "For / Against" buttons. (Requiring the bare mention avoids an
+  the bot posts a vote with "For / Against" buttons — in forum groups it goes into the same
+  topic as the trigger message. (Requiring the bare mention avoids an
   explanatory sentence that merely contains `@yourbot` accidentally voting someone out; if the
   bot is mentioned any other way it just replies with a short how-to.) There are **no commands to type in the group** (nothing to clutter
   it, and it stays safe when several bots share a chat — you mention the specific one). The
@@ -120,8 +121,8 @@ Placement is configured by `APP_URL` and supports both:
 │   └── Migrator.php        # applies migrations
 ├── lang/
 │   ├── 01-ru.php           # bot + panel texts (NN-<code>.php; order = filename)
-│   ├── 02-en.php           # English translation
-│   └── 03-kk.php           # Kazakh translation
+│   ├── 02-kk.php           # Kazakh translation
+│   └── 03-en.php           # English translation
 ├── migrations/
 │   ├── run.php             # migration runner (?token=SUPERADMIN_TOKEN or CLI)
 │   ├── 001_initial/        # base schema + cron seeding
@@ -192,13 +193,16 @@ curl -F "url=https://YOUR_DOMAIN/webhook.php" \
 2. **Create** a utf8mb4 database and a user.
 3. **Create configs** from templates and fill them in:
    - `cp config/bot.example.php config/bot.php` — `BOT_TOKEN`, `BOT_USERNAME`,
-     `WEBHOOK_SECRET`, `APP_URL`, `SUPERADMIN_TOKEN`, `LOG_LEVEL`.
+     `WEBHOOK_SECRET`, `APP_URL`, `LOG_LEVEL`. Leave `SUPERADMIN_TOKEN` and `SUPERADMIN_PATH`
+     empty — the installer's first run sets them (see below).
    - `cp config/db.example.php config/db.php` — DB credentials, `DB_TABLE_PREFIX`.
 4. **Set up the bot** at @BotFather (steps 1–3 above).
 5. **Run the installer** — checks requirements, applies **migrations**, registers the webhook
    and the bot's DM command menu (`/start`, `/groups`, `/language`, `/help` — no need to set
    them by hand in @BotFather):
-   - Web: `https://YOUR_DOMAIN/install.php?token=YOUR_SUPERADMIN_TOKEN`
+   - Web, first run (empty `SUPERADMIN_TOKEN`): open `https://YOUR_DOMAIN/install.php` — no token
+     needed; a form creates the superadmin login/password and writes the config, then it installs.
+   - Web, later runs: `https://YOUR_DOMAIN/install.php?token=YOUR_SUPERADMIN_TOKEN`
    - CLI: `php install.php`
    - Skip webhook registration with `?webhook=0` (web) / `php install.php nowebhook` (CLI).
 6. **⚠️ Delete `install.php`** after a successful install.
@@ -222,7 +226,8 @@ migrations) — re-running it is safe.
 | `BOT_TOKEN` | Token from @BotFather |
 | `BOT_USERNAME` | Bot username without `@` (Login Widget + mention detection) |
 | `WEBHOOK_SECRET` | Verified against the `X-Telegram-Bot-Api-Secret-Token` header |
-| `SUPERADMIN_TOKEN` | Gate for `cron.php`/`install.php`/`migrations/run.php` over HTTP, and internal worker self-trigger |
+| `SUPERADMIN_TOKEN` | `base64("login:password")`. Gates `cron.php`/`install.php`/`migrations/run.php` over HTTP (and the worker self-trigger), **and** is the HTTP Basic Auth credential for the superadmin page. Set on the first `install.php` run |
+| `SUPERADMIN_PATH` | Secret slug of the superadmin page → `APP_URL/<slug>`; empty disables it (see the panel section) |
 | `LOG_LEVEL` | `trace`/`debug`/`info`/`warning`/`error`/`fatal` |
 
 ### `config/db.php`
@@ -292,6 +297,25 @@ open the panel, and without cluttering the group). Reply to a vote-start notific
 `forceban`, `cancelban`, or `protect` (cancel the vote and protect the target); reply to a ban
 notification with `unban` or `protect`. The bot checks you still administer that group and that the
 vote is still open, then acts and confirms.
+
+**Operator (superadmin) overview.** If you run this bot for others, there's a separate operator page
+listing every group the bot serves — including ones it was removed from — each with its last
+activity, and, for a selected group, its owner and admins (bots excluded). It's meant for reaching
+group owners/admins directly, e.g. to warn them before shutting the service down. The operator needs
+to know **nothing about Telegram**: the data is fetched server-side with the bot token, and this page
+has nothing to do with the Telegram login.
+
+The page lives at a **secret address you choose** — `SUPERADMIN_PATH` in `config/bot.php` (a random
+slug → `APP_URL/<slug>`) — and is protected by **HTTP Basic Auth** (`SUPERADMIN_TOKEN`, stored as
+`base64("login:password")`). Two independent layers: a secret URL and a password. Leave
+`SUPERADMIN_PATH` empty to disable the page entirely (any request is then a plain `404`).
+
+Set the credentials on the **first run of `install.php`**: while `SUPERADMIN_TOKEN` is still empty the
+installer needs no token and instead shows a short form to create the login/password — it writes
+`SUPERADMIN_TOKEN` and a random `SUPERADMIN_PATH` into `config/bot.php` for you (make `config/bot.php`
+writable, or paste the shown values manually). With shell access, `php install.php gentoken` prints
+the same values to paste. On CGI/FastCGI hosting, HTTP Basic Auth needs the `Authorization` header
+passed to PHP — the bundled `.htaccess` already does this (`CGIPassAuth On` is the Apache alternative).
 
 ---
 

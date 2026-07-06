@@ -31,6 +31,10 @@ final class VoteManager
         $group = GroupManager::ensureGroup($chatId);
         $lang  = (string) ($group['lang'] ?? 'ru');
 
+        // Forum topic (if any) the trigger was written in — everything about this vote is posted
+        // back into the SAME topic, not "General".
+        $threadId = self::threadOf($message);
+
         $initiator = $message['from'] ?? [];
         $target    = $reply['from'] ?? [];
         $initiatorId = (int) ($initiator['id'] ?? 0);
@@ -42,7 +46,7 @@ final class VoteManager
         }
         if ($targetId === $initiatorId || !empty($target['is_bot'])) {
             // Can't vote against yourself or against a bot.
-            self::deny($chatId, $group);
+            self::deny($chatId, $group, $threadId);
             return;
         }
 
@@ -69,14 +73,14 @@ final class VoteManager
         );
         if ($counterAttack) {
             Logger::info('VoteManager: counter-attack attempt rejected', ['chat_id' => $chatId, 'target' => $targetId]);
-            self::deny($chatId, $group);
+            self::deny($chatId, $group, $threadId);
             return;
         }
 
         // Can't put a group admin/owner up for a vote.
         if (GroupManager::isAdmin($chatId, $targetId)) {
             Logger::info('VoteManager: target is an admin, voting forbidden', ['chat_id' => $chatId, 'target' => $targetId]);
-            self::deny($chatId, $group);
+            self::deny($chatId, $group, $threadId);
             return;
         }
 
@@ -84,7 +88,7 @@ final class VoteManager
         $initP = GroupManager::ensureParticipant($chatId, $initiatorId, $initiator['username'] ?? null);
         if (!self::canParticipate($chatId, $initiatorId, $group)) {
             Logger::debug('VoteManager: initiator not eligible', ['chat_id' => $chatId, 'user' => $initiatorId]);
-            self::deny($chatId, $group);
+            self::deny($chatId, $group, $threadId);
             return;
         }
 
@@ -92,7 +96,7 @@ final class VoteManager
         $targetP = GroupManager::ensureParticipant($chatId, $targetId, $target['username'] ?? null);
         if ((int) ($targetP['is_protected'] ?? 0) === 1) {
             Logger::info('VoteManager: target is protected', ['chat_id' => $chatId, 'target' => $targetId]);
-            self::deny($chatId, $group);
+            self::deny($chatId, $group, $threadId);
             return;
         }
 
@@ -112,11 +116,11 @@ final class VoteManager
 
         DB::run(
             "INSERT INTO {$tVotes}
-                (chat_id, target_id, initiator_id, trigger_msg_id, trigger_text, trigger_date, started_at, status, used_threshold)
-             VALUES (?, ?, ?, ?, ?, " . ($triggerDate !== null ? 'FROM_UNIXTIME(?)' : 'NULL') . ", NOW(), 'active', ?)",
+                (chat_id, target_id, initiator_id, trigger_msg_id, trigger_text, trigger_date, started_at, status, used_threshold, thread_id)
+             VALUES (?, ?, ?, ?, ?, " . ($triggerDate !== null ? 'FROM_UNIXTIME(?)' : 'NULL') . ", NOW(), 'active', ?, ?)",
             $triggerDate !== null
-                ? [$chatId, $targetId, $initiatorId, (int) ($reply['message_id'] ?? 0), $triggerText, $triggerDate, $threshold]
-                : [$chatId, $targetId, $initiatorId, (int) ($reply['message_id'] ?? 0), $triggerText, $threshold]
+                ? [$chatId, $targetId, $initiatorId, (int) ($reply['message_id'] ?? 0), $triggerText, $triggerDate, $threshold, $threadId]
+                : [$chatId, $targetId, $initiatorId, (int) ($reply['message_id'] ?? 0), $triggerText, $threshold, $threadId]
         );
         $voteId = (int) DB::lastInsertId();
 
@@ -184,11 +188,11 @@ final class VoteManager
             'initiator' => self::displayName($initiator, $lang),
             'target'    => self::displayName($target, $lang),
         ]);
-        $sent = Bot::call('sendMessage', [
+        $sent = Bot::call('sendMessage', self::withThread([
             'chat_id'      => $chatId,
             'text'         => $text,
             'reply_markup' => self::keyboard($group, $voteId, $forSum, 0.0, $threshold),
-        ]);
+        ], $threadId));
         if (is_array($sent) && isset($sent['message_id'])) {
             DB::run(
                 "UPDATE {$tVotes} SET vote_message_id = ? WHERE id = ?",
@@ -393,33 +397,64 @@ final class VoteManager
     }
 
     /** "You can't do this right now" with auto-deletion. */
-    private static function deny(int $chatId, array $group): void
+    private static function deny(int $chatId, array $group, ?int $threadId = null): void
     {
-        self::ephemeral($chatId, $group, Lang::get('action_denied', (string) ($group['lang'] ?? 'ru')));
+        self::ephemeral($chatId, $group, Lang::get('action_denied', (string) ($group['lang'] ?? 'ru')), $threadId);
     }
 
     /**
      * Explain how to start a vote (self-deleting). Used when the bot is mentioned in a group but
      * the message isn't a valid trigger — no reply, or extra text besides the bare mention — so
-     * a stray "@bot" or an explanatory sentence never silently votes someone out.
+     * a stray "@bot" or an explanatory sentence never silently votes someone out. $threadId keeps
+     * the hint in the same forum topic the bot was mentioned in.
      */
-    public static function hintHowToVote(int $chatId): void
+    public static function hintHowToVote(int $chatId, ?int $threadId = null): void
     {
         $group = GroupManager::getGroup($chatId);
         if ($group === null) {
             return;
         }
         $botUser = (string) Config::value('bot', 'BOT_USERNAME', '');
-        self::ephemeral($chatId, $group, Lang::get('vote_howto', (string) ($group['lang'] ?? 'ru'), ['bot' => $botUser]));
+        self::ephemeral($chatId, $group, Lang::get('vote_howto', (string) ($group['lang'] ?? 'ru'), ['bot' => $botUser]), $threadId);
     }
 
-    /** Temporary message auto-deleted after cleanup_delay. */
-    private static function ephemeral(int $chatId, array $group, string $text): void
+    /** Temporary message auto-deleted after cleanup_delay. Posted into $threadId if given. */
+    private static function ephemeral(int $chatId, array $group, string $text, ?int $threadId = null): void
     {
-        $res = Bot::call('sendMessage', ['chat_id' => $chatId, 'text' => $text]);
+        $res = Bot::call('sendMessage', self::withThread(['chat_id' => $chatId, 'text' => $text], $threadId));
         if (is_array($res) && isset($res['message_id'])) {
             self::scheduleDelete($chatId, (int) $res['message_id'], (int) ($group['cleanup_delay_seconds'] ?? 60));
         }
+    }
+
+    /**
+     * The forum topic (message thread) a message belongs to, or null. Set ONLY for real forum-topic
+     * messages: passing message_thread_id in a non-forum chat (or for "General") errors, so we key
+     * off is_topic_message.
+     *
+     * @param array<string, mixed> $message
+     */
+    public static function threadOf(array $message): ?int
+    {
+        if (!empty($message['is_topic_message']) && isset($message['message_thread_id'])) {
+            return (int) $message['message_thread_id'];
+        }
+        return null;
+    }
+
+    /**
+     * Add message_thread_id to sendMessage params when we have a topic, so the message lands in the
+     * same forum topic as the trigger. No-op for ordinary groups / General.
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private static function withThread(array $params, ?int $threadId): array
+    {
+        if ($threadId !== null && $threadId > 0) {
+            $params['message_thread_id'] = $threadId;
+        }
+        return $params;
     }
 
     /** Record a message in bot_messages for deferred deletion (cron). */
@@ -570,6 +605,7 @@ final class VoteManager
         $lang        = (string) ($group['lang'] ?? 'ru');
         $targetId    = (int) $vote['target_id'];
         $msgId       = (int) ($vote['vote_message_id'] ?? 0);
+        $threadId    = isset($vote['thread_id']) ? (int) $vote['thread_id'] : null;
         $wasReadonly = ($vote['readonly_at'] ?? null) !== null;
 
         Logger::info('VoteManager: vote finished', ['vote_id' => $voteId, 'outcome' => $outcome]);
@@ -595,7 +631,7 @@ final class VoteManager
                 if ($msgId > 0) {
                     Bot::call('editMessageText', ['chat_id' => $chatId, 'message_id' => $msgId, 'text' => $base]);
                 } else {
-                    $sent = Bot::call('sendMessage', ['chat_id' => $chatId, 'text' => $base]);
+                    $sent = Bot::call('sendMessage', self::withThread(['chat_id' => $chatId, 'text' => $base], $threadId));
                     if (is_array($sent) && isset($sent['message_id'])) {
                         DB::run("UPDATE {$tVotes} SET vote_message_id = ? WHERE id = ?", [(int) $sent['message_id'], $voteId]);
                     }
@@ -607,7 +643,7 @@ final class VoteManager
                     Bot::call('editMessageText', ['chat_id' => $chatId, 'message_id' => $msgId, 'text' => $full]);
                     DB::run("UPDATE {$tVotes} SET vote_message_id = NULL WHERE id = ?", [$voteId]);
                 } else {
-                    Bot::call('sendMessage', ['chat_id' => $chatId, 'text' => $full]);
+                    Bot::call('sendMessage', self::withThread(['chat_id' => $chatId, 'text' => $full], $threadId));
                 }
             }
             return;

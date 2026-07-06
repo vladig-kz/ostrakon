@@ -139,6 +139,20 @@ return [
     'panel_not_found'        => 'Страница не найдена.',
     'panel_internal_error'   => 'Внутренняя ошибка.',
 
+    // Hoster (operator) zone
+    'panel_hoster'           => 'Хостинг',
+    'panel_hoster_intro'     => 'Все группы, где работает (или работал) бот, и кого в них оповещать — например, при закрытии хостинга.',
+    'panel_hoster_groups'    => 'Группы',
+    'panel_hoster_members'   => 'Кого оповещать',
+    'panel_hoster_pick'      => 'Выберите группу слева, чтобы увидеть её владельца и администраторов.',
+    'panel_hoster_col_group' => 'Группа',
+    'panel_hoster_col_activity' => 'Активность',
+    'panel_hoster_col_role'  => 'Роль',
+    'panel_hoster_active'    => 'подключён',
+    'panel_hoster_inactive'  => 'отключён',
+    'panel_hoster_no_groups' => 'Пока нет ни одной группы.',
+    'panel_hoster_no_members'=> 'Список недоступен: бот не состоит в этой группе.',
+
     // Group settings
     'panel_settings'         => 'Настройки',
     'panel_open_settings'    => '⚙️ Настройки',

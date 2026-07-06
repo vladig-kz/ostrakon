@@ -139,6 +139,20 @@ return [
     'panel_not_found'        => 'Page not found.',
     'panel_internal_error'   => 'Internal error.',
 
+    // Hoster (operator) zone
+    'panel_hoster'           => 'Hosting',
+    'panel_hoster_intro'     => 'Every group the bot serves (or served), and who to notify in each — e.g. when you shut the hosting down.',
+    'panel_hoster_groups'    => 'Groups',
+    'panel_hoster_members'   => 'Who to notify',
+    'panel_hoster_pick'      => 'Pick a group on the left to see its owner and admins.',
+    'panel_hoster_col_group' => 'Group',
+    'panel_hoster_col_activity' => 'Activity',
+    'panel_hoster_col_role'  => 'Role',
+    'panel_hoster_active'    => 'connected',
+    'panel_hoster_inactive'  => 'disconnected',
+    'panel_hoster_no_groups' => 'No groups yet.',
+    'panel_hoster_no_members'=> 'Roster unavailable: the bot is not a member of this group.',
+
     // Group settings
     'panel_settings'         => 'Settings',
     'panel_open_settings'    => '⚙️ Settings',

@@ -139,6 +139,20 @@ return [
     'panel_not_found'        => 'Бет табылмады.',
     'panel_internal_error'   => 'Ішкі қате.',
 
+    // Hoster (operator) zone
+    'panel_hoster'           => 'Хостинг',
+    'panel_hoster_intro'     => 'Бот жұмыс істейтін (немесе істеген) барлық топтар және оларда кімге хабарлау керектігі — мысалы, хостинг жабылғанда.',
+    'panel_hoster_groups'    => 'Топтар',
+    'panel_hoster_members'   => 'Кімге хабарлау',
+    'panel_hoster_pick'      => 'Иесі мен әкімшілерін көру үшін сол жақтан топты таңдаңыз.',
+    'panel_hoster_col_group' => 'Топ',
+    'panel_hoster_col_activity' => 'Белсенділік',
+    'panel_hoster_col_role'  => 'Рөлі',
+    'panel_hoster_active'    => 'қосулы',
+    'panel_hoster_inactive'  => 'ажыратылған',
+    'panel_hoster_no_groups' => 'Әзірге бірде-бір топ жоқ.',
+    'panel_hoster_no_members'=> 'Тізім қолжетімсіз: бот бұл топта жоқ.',
+
     // Group settings
     'panel_settings'         => 'Баптаулар',
     'panel_open_settings'    => '⚙️ Баптаулар',
