@@ -60,7 +60,9 @@ echo 'OK';
 function trigger_worker(): void
 {
     // Disabled by config → rely on the system cron alone (see 'worker_self_poke' in defaults.php).
-    if (!(bool) Config::value('defaults', 'worker_self_poke', true)) {
+    // worker_self_poke lives under the nested 'instance' section, so read that sub-array.
+    $instance = (array) Config::value('defaults', 'instance', []);
+    if (!(bool) ($instance['worker_self_poke'] ?? true)) {
         return;
     }
     $appUrl = rtrim((string) Config::value('bot', 'APP_URL', ''), '/');

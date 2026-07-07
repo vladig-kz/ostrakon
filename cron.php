@@ -45,9 +45,13 @@ if ($lockHandle === null) {
 @set_time_limit(0);
 ignore_user_abort(true);
 
-$loopSeconds = max(1, (int) Config::value('defaults', 'worker_loop_seconds', 55));
-$pollSeconds = max(1, (int) Config::value('defaults', 'worker_poll_seconds', 2));
-$heartbeat   = (bool) Config::value('defaults', 'worker_heartbeat', false);
+// defaults.php is a NESTED config: worker_* live under the 'instance' section, so read that
+// sub-array and index into it (Config::value only resolves ONE key level — see cron_run() below,
+// which reads cron_intervals the same way).
+$instance    = (array) Config::value('defaults', 'instance', []);
+$loopSeconds = max(1, (int) ($instance['worker_loop_seconds'] ?? 55));
+$pollSeconds = max(1, (int) ($instance['worker_poll_seconds'] ?? 2));
+$heartbeat   = (bool) ($instance['worker_heartbeat'] ?? false);
 $start       = time();
 $deadline    = $start + $loopSeconds;
 
