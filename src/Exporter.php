@@ -14,7 +14,7 @@ declare(strict_types=1);
  *
  * What is NOT exported: the bot token (a new instance = a new bot), active votes (they keep
  * running wherever they are — export must not disturb them), and operational tables
- * (cron_schedule, pending_setup, bot_messages).
+ * (cron_schedule, bot_messages, per-group onboarding state).
  *
  * Import is idempotent (safe to run twice):
  *   - groups/participants — UPSERT by their natural key (chat_id / chat_id+user_id);
@@ -223,8 +223,13 @@ final class Exporter
             return;
         }
         // is_active reflects THIS instance's live connection (the bot was just added here), not
-        // the source instance — never let the file override it.
-        unset($row['is_active']);
+        // the source instance — never let the file override it. The onboarding_* columns are
+        // transient per-instance setup state and must not be carried over either (a stale
+        // onboarding_adder would make the cron wrongly try to leave the freshly imported group).
+        unset(
+            $row['is_active'],
+            $row['onboarding_at'], $row['onboarding_adder'], $row['onboarding_hint_msg_id'], $row['onboarding_pending']
+        );
         $row['chat_id'] = $chatId;
         $cols = array_keys($row);
         $set  = [];

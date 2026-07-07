@@ -34,7 +34,7 @@ $tables = [
     'vote_records'  => 'id DESC',
     'suspects'      => 'id DESC',
     'cron_schedule' => 'next_run_at ASC',
-    'pending_setup' => 'started_at DESC',
+    'users'         => 'updated_at DESC',
     'bot_messages'  => 'id DESC',
     'migrations'    => 'id DESC',
 ];

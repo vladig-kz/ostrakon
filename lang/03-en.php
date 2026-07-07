@@ -52,8 +52,9 @@ return [
     'start_need_admin'  => '⚠️ In the groups marked ⚠️, make me an administrator with the right to ban members — otherwise I can’t enforce vote outcomes.',
     'group_connected'   => 'The group “{title}” is connected! ✅',
     'group_setup_hint'  => 'Thanks for adding me! To get me working: 1) open a chat with me to set things up — @{bot}; 2) make me an administrator with the right to ban members.',
+    'group_rights_missing' => 'I don’t have the right to ban members in “{title}” — without it I can’t enforce vote outcomes. Grant it (make me an admin) or remove me.',
+    'group_rights_ok'   => 'I now have the right to ban members in “{title}” — all set ✅.',
     'group_owner_only'  => 'Only the group’s owner can add me to a group. Leaving.',
-    'setup_expired'     => 'I was waiting for you to add me to a group, but it didn’t happen. When you’re ready, send /start and we’ll begin again.',
 
     // --- Web panel ---
     'panel_login_title'      => 'Panel login',

@@ -358,7 +358,7 @@ POST-запросы защищены CSRF.
 их `next_run_at` сдвигается на интервал из `config/defaults.php`. Так задача срабатывает
 вовремя и ровно один раз, даже если системный cron дёргается реже раза в минуту.
 
-Задачи: `vote_timeouts`, `pending_setup_ttl`, `bot_messages_cleanup` (раз в минуту),
+Задачи: `vote_timeouts`, `onboarding_check`, `bot_messages_cleanup` (раз в минуту),
 `reentry_check` (5 мин), `score_recalc`, `data_ttl` (раз в сутки). От наложения защищает
 `flock` на `logs/do_not_delete_this.lock` (снимается автоматически; удалять не нужно).
 

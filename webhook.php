@@ -59,6 +59,10 @@ echo 'OK';
  */
 function trigger_worker(): void
 {
+    // Disabled by config → rely on the system cron alone (see 'worker_self_poke' in defaults.php).
+    if (!(bool) Config::value('defaults', 'worker_self_poke', true)) {
+        return;
+    }
     $appUrl = rtrim((string) Config::value('bot', 'APP_URL', ''), '/');
     $token  = (string) Config::value('bot', 'SUPERADMIN_TOKEN', '');
     if ($appUrl === '' || $token === '') {

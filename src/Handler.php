@@ -49,6 +49,8 @@ final class Handler
 
         // --- Private chat with the bot (onboarding) ---
         if ($chatType === 'private') {
+            // An inbound private message proves the dialog is open — remember it so we may DM later.
+            GroupManager::markDm((int) ($message['from']['id'] ?? 0));
             $cmd = self::parseCommand($text);
             Logger::debug('Handler: private message', [
                 'from' => $message['from']['id'] ?? null,
@@ -226,6 +228,11 @@ final class Handler
         if (in_array($newStatus, ['left', 'kicked'], true)) {
             GroupManager::onBotRemoved($chatId);
             return;
+        }
+
+        // Still present, but the bot's rights changed (promoted/demoted, ban right granted/revoked).
+        if ($isPresent) {
+            GroupManager::onBotRightsChanged($chatId, (int) ($cm['from']['id'] ?? 0));
         }
     }
 

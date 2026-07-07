@@ -47,7 +47,9 @@ ignore_user_abort(true);
 
 $loopSeconds = max(1, (int) Config::value('defaults', 'worker_loop_seconds', 55));
 $pollSeconds = max(1, (int) Config::value('defaults', 'worker_poll_seconds', 2));
-$deadline = time() + $loopSeconds;
+$heartbeat   = (bool) Config::value('defaults', 'worker_heartbeat', false);
+$start       = time();
+$deadline    = $start + $loopSeconds;
 
 $updates = 0;
 $tasks   = 0;
@@ -59,12 +61,21 @@ do {
         Logger::fatal('cron: unhandled exception in worker loop', $e);
     }
 
+    // Heartbeat (debug): shows the worker is alive and how far into the loop it got. If these lines
+    // stop before "worker finished", the host killed the process at that elapsed second.
+    if ($heartbeat) {
+        Logger::info('cron: heartbeat', ['elapsed' => time() - $start, 'updates' => $updates, 'tasks' => $tasks]);
+    }
+
     if (time() >= $deadline) {
         break;
     }
     sleep($pollSeconds);
 } while (time() < $deadline);
 
+if ($heartbeat) {
+    Logger::info('cron: worker finished', ['elapsed' => time() - $start, 'updates' => $updates, 'tasks' => $tasks]);
+}
 echo "OK (updates: {$updates}, tasks: {$tasks})\n";
 
 // ---------------------------------------------------------------------------
@@ -151,8 +162,8 @@ function cron_dispatch(string $task): void
             VoteManager::cleanupBotMessages();
             break;
 
-        case 'pending_setup_ttl':
-            GroupManager::expirePendingSetup();
+        case 'onboarding_check':
+            GroupManager::runOnboardingChecks();
             break;
 
         case 'reentry_check':

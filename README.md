@@ -361,7 +361,7 @@ system cron keeps things moving (the self-poke covers the gaps when it works).
 their `next_run_at` is pushed by the interval from `config/defaults.php`. This fires each
 task on time and exactly once even if the system cron runs less than once a minute.
 
-Tasks: `vote_timeouts`, `pending_setup_ttl`, `bot_messages_cleanup` (every minute),
+Tasks: `vote_timeouts`, `onboarding_check`, `bot_messages_cleanup` (every minute),
 `reentry_check` (5 min), `score_recalc`, `data_ttl` (daily). Overlap is prevented by a
 `flock` advisory lock on `logs/do_not_delete_this.lock` (auto-released; never delete it).
 

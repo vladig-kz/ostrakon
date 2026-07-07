@@ -16,7 +16,7 @@
 
 return [
 
-    'schema_version' => 3,
+    'schema_version' => 5,
 
     // -----------------------------------------------------------------
     // Default group settings (→ copied into the `groups` table)
@@ -60,6 +60,25 @@ return [
         // period (≈ period − 5 sec). flock prevents overlap.
         'worker_loop_seconds' => 55,
         'worker_poll_seconds' => 2,
+
+        // Should webhook.php "poke" the worker — a short self-request to cron.php — so a fresh
+        // update is handled at once instead of waiting for the next system-cron launch?
+        //   • Keep TRUE if your system cron runs INFREQUENTLY (every few minutes): the poke covers
+        //     the gaps when no worker is alive.
+        //   • Set FALSE if your system cron runs EVERY MINUTE and worker_loop_seconds nearly fills
+        //     the minute. Then a worker is almost always alive and drains the queue every
+        //     worker_poll_seconds, so updates are processed within seconds anyway — WITHOUT the
+        //     extra HTTPS self-request (which on constrained hosting can add latency and cause rare
+        //     "connection timed out" reports to Telegram). Use worker_heartbeat below to check first
+        //     that the host actually lets the worker run the full loop.
+        'worker_self_poke' => true,
+
+        // Debug aid: log a "heartbeat" line on every worker poll (with elapsed seconds) plus a
+        // "finished" line at the natural end of the loop. It shows whether the host lets the worker
+        // run the whole worker_loop_seconds or kills long CLI processes early: if the heartbeats
+        // stop at, say, 30s with NO "finished" line, the worker was killed at ~30s → there are gaps,
+        // so keep worker_self_poke = true (or shorten the loop). Turn OFF in production — it's chatty.
+        'worker_heartbeat' => false,
     ],
 
     // -----------------------------------------------------------------
@@ -69,7 +88,7 @@ return [
         'score_recalc'         => 86400,  // recompute score (daily, anchored at 03:00 UTC)
         'data_ttl'             => 86400,  // delete history older than history_days
         'vote_timeouts'        => 60,     // close timed-out votes (T1/T2)
-        'pending_setup_ttl'    => 60,     // expire the "waiting for the bot to be added" state (10 min)
+        'onboarding_check'     => 60,     // group onboarding: post/remove the ban-right hint, deferred owner-check
         'bot_messages_cleanup' => 60,     // deferred deletion of service messages
         'reentry_check'        => 300,    // clear expired re-entry windows of banned users
     ],

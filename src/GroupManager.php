@@ -219,70 +219,137 @@ final class GroupManager
      */
     public static function onBotAdded(int $chatId, array $cm): void
     {
-        $title = $cm['chat']['title'] ?? null;
-
-        // Do we already know this group? Then this is NOT a first add: either a re-add, or a
-        // basic-group upgrade to a supergroup (migrateChat already moved the row to the new
-        // chat_id, and Telegram sent the bot a my_chat_member left→admin in the new
-        // supergroup). In those cases we don't post the onboarding hint into the group.
-        $existed = (bool) DB::fetchColumn(
-            "SELECT 1 FROM " . DB::table('groups') . " WHERE chat_id = ?",
-            [$chatId]
-        );
-
+        $title  = $cm['chat']['title'] ?? null;
         $from   = $cm['from'] ?? [];
         $fromId = (int) ($from['id'] ?? 0);
 
-        // First real add: only the group's OWNER (creator) may connect the bot. Telegram often
-        // lets ordinary members add bots too, but we refuse that — a non-owner can't use the bot
-        // anyway (settings are owner/manager-only). Re-adds and supergroup migrations take the
-        // `existed` branch below and are NOT subject to this check. If we can't confirm the
-        // adder is the creator (including an empty `from`), we decline: there's no group of ours
-        // to lose (existed == false), and the owner can simply add the bot again.
-        if (!$existed && ($fromId === 0 || !self::isOwner($chatId, $fromId))) {
-            $defLang = (string) (((array) Config::value('defaults', 'group', []))['lang'] ?? 'ru');
-            Bot::call('sendMessage', [
-                'chat_id' => $chatId,
-                'text'    => Lang::get('group_owner_only', $defLang),
-            ]);
-            Bot::call('leaveChat', ['chat_id' => $chatId]);
-            Logger::info('GroupManager: bot added by a non-owner — leaving', ['chat_id' => $chatId, 'by' => $fromId]);
-            return;
+        // A basic-group → supergroup upgrade lands here too (migrateChat moved the row to the new
+        // chat_id and Telegram sent a left→admin my_chat_member). We must NOT re-onboard or run the
+        // owner-check on an upgrade — its `from` may be a non-owner/service. Distinguish it: an
+        // upgrade is "the group was still ACTIVE"; a genuine re-add is "the bot had been removed"
+        // (onBotRemoved set is_active = 0). Read is_active BEFORE we flip it on.
+        $existing  = self::getGroup($chatId);
+        $existed   = $existing !== null;
+        $wasActive = $existed && (int) ($existing['is_active'] ?? 0) === 1;
+        if ($existed && $wasActive) {
+            return; // upgrade / redundant event — stay silent
         }
 
         $group = self::ensureGroup($chatId, $title);
-        self::setActive($chatId, true); // (re)connected — flip the flag back on for a re-add
-        $lang  = (string) ($group['lang'] ?? 'ru');
+        self::setActive($chatId, true);
         Logger::info('GroupManager: bot added to group', ['chat_id' => $chatId, 'existed' => $existed]);
 
-        // Onboarding: if whoever added the bot did /start recently (≤10 min), this is "their"
-        // add: DM them and refresh their group list, don't post into the group.
-        $pTable = DB::table('pending_setup');
-        if ($fromId !== 0) {
-            $pending = DB::fetchColumn(
-                "SELECT 1 FROM {$pTable} WHERE user_id = ? AND started_at > NOW() - INTERVAL 10 MINUTE",
-                [$fromId]
+        // A migration ALWAYS produces a supergroup, so a SUPERGROUP add might be a genuine add OR a
+        // basic→supergroup upgrade whose migration hasn't merged yet — we can't tell now. DEFER the
+        // whole first onboarding pass to the cron (onboarding_pending = 1): by its next tick a
+        // migration, if any, has merged and wiped this row, so an upgrade produces no duplicate
+        // onboarding. An add to a BASIC group is never a migration in progress → onboard immediately.
+        if ((string) ($cm['chat']['type'] ?? '') === 'supergroup') {
+            DB::run(
+                "UPDATE " . DB::table('groups')
+                . " SET onboarding_pending = 1, onboarding_adder = ?, onboarding_at = NOW(), onboarding_hint_msg_id = NULL WHERE chat_id = ?",
+                [$fromId, $chatId]
             );
-            if ($pending) {
-                DB::run("DELETE FROM {$pTable} WHERE user_id = ?", [$fromId]);
-                Bot::call('sendMessage', [
-                    'chat_id' => $fromId,
-                    'text'    => Lang::get('group_connected', $lang, ['title' => (string) ($title ?? $chatId)]),
-                ]);
-                self::sendDialog($from, false); // no "hi, I'm Ostrakon" — they just connected
+            return;
+        }
+
+        self::onboardFirstPass($chatId, $group, $fromId);
+    }
+
+    /**
+     * The first onboarding pass for a freshly connected group. Runs synchronously for a basic-group
+     * add, or from the cron for a deferred supergroup add. Owner-only policy: we onboard normally
+     * only for a CONFIRMED owner ('creator'); for a confirmed non-owner — OR a failed lookup (from
+     * != 0, status unknown) — we DEFER an owner-check/leave to the cron. Unknown adder (from == 0)
+     * is not deferred; we never leave on that alone.
+     *
+     * @param array<string, mixed> $group a groups row
+     */
+    private static function onboardFirstPass(int $chatId, array $group, int $fromId): void
+    {
+        if ($fromId !== 0) {
+            $m = self::getMember($chatId, $fromId);
+            if ($m === null || (string) ($m['status'] ?? '') !== 'creator') {
+                self::onboardingBeginDeferredLeave($chatId, $group, $fromId);
                 return;
             }
         }
+        // Confirmed owner, or unknown adder → onboard on the LIVE owner and the bot rights.
+        self::onboardStart($chatId, $group);
+    }
 
-        // In-group hint — only on the bot's FIRST appearance in a new group.
-        // Re-add and supergroup upgrade (row already exists) — no hint.
-        if ($existed) {
+    /**
+     * A non-owner (or an adder we couldn't verify) connected the bot: arm a deferred owner-check
+     * (the cron leaves in 10 min unless the OWNER sanctions the bot by promoting it). Meanwhile tell
+     * the owner they need to grant the ban right — in their DM if we can reach them, else in the group.
+     *
+     * @param array<string, mixed> $group a groups row
+     */
+    private static function onboardingBeginDeferredLeave(int $chatId, array $group, int $adderId): void
+    {
+        $ownerId   = self::ownerId($chatId);
+        $title     = (string) ($group['title'] ?? $chatId);
+        $hintMsgId = null;
+
+        // If we can't even determine the owner (ownerId == 0), the group is momentarily
+        // unqueryable — typically a supergroup upgrade still settling. Send NOTHING now (a group
+        // post here would flicker and get wiped by migrateChat); just arm the marker and let the
+        // cron act once the group is stable.
+        if ($ownerId !== 0 && self::hasDm($ownerId)) {
+            Bot::call('sendMessage', [
+                'chat_id' => $ownerId,
+                'text'    => Lang::get('group_rights_missing', self::userLangOrDefault($ownerId), ['title' => $title]),
+            ]);
+        } elseif ($ownerId !== 0) {
+            $res = Bot::call('sendMessage', [
+                'chat_id' => $chatId,
+                'text'    => Lang::get('group_setup_hint', (string) ($group['lang'] ?? 'ru'), ['bot' => (string) Config::value('bot', 'BOT_USERNAME', '')]),
+            ]);
+            if (is_array($res) && isset($res['message_id'])) {
+                $hintMsgId = (int) $res['message_id'];
+            }
+        }
+
+        DB::run(
+            "UPDATE " . DB::table('groups')
+            . " SET onboarding_at = NOW(), onboarding_adder = ?, onboarding_hint_msg_id = ? WHERE chat_id = ?",
+            [$adderId, $hintMsgId, $chatId]
+        );
+        Logger::info('GroupManager: non-owner add — deferred owner-check', ['chat_id' => $chatId, 'by' => $adderId]);
+    }
+
+    /**
+     * Start (or refresh) the onboarding for a freshly connected group: confirm to the owner if we
+     * can DM them, and — if the bot has no ban right — enter the "waiting for the ban right" phase
+     * (the cron then handles the +1 min in-group hint and the +10 min follow-up).
+     *
+     * @param array<string, mixed> $group a groups row
+     */
+    private static function onboardStart(int $chatId, array $group): void
+    {
+        $ownerId    = self::ownerId($chatId);
+        $dialogOpen = $ownerId !== 0 && self::hasDm($ownerId);
+        $title      = (string) ($group['title'] ?? $chatId);
+
+        if ($dialogOpen) {
+            // Confirm in the DM + refresh the owner's group list (which shows ⚠️/⚙️ per group).
+            Bot::call('sendMessage', [
+                'chat_id' => $ownerId,
+                'text'    => Lang::get('group_connected', self::userLangOrDefault($ownerId), ['title' => $title]),
+            ]);
+            self::sendDialog(['id' => $ownerId], false);
+        }
+
+        if (self::botHasBanRight($chatId)) {
+            self::onboardingClear($chatId); // already fully working
             return;
         }
-        // Self-deleting after 10 min (same window as pending_setup) so it doesn't clutter the
-        // group forever — enough time for the owner to read it and open a DM with the bot.
-        $botUser = (string) Config::value('bot', 'BOT_USERNAME', '');
-        self::ephemeral($chatId, $group, Lang::get('group_setup_hint', $lang, ['bot' => $botUser]), 600);
+        // No ban right yet → wait for it (adder = NULL marks the "waiting for rights" phase).
+        DB::run(
+            "UPDATE " . DB::table('groups')
+            . " SET onboarding_at = NOW(), onboarding_adder = NULL, onboarding_hint_msg_id = NULL WHERE chat_id = ?",
+            [$chatId]
+        );
     }
 
     /**
@@ -443,6 +510,137 @@ final class GroupManager
             return false;
         }
         return !empty($m['can_restrict_members']);
+    }
+
+    /**
+     * Strict "does the bot have the ban right" check for the onboarding flow: unlike botCanEnforce
+     * (which returns true when it can't check, to avoid a false ⚠️), this returns FALSE on any
+     * uncertainty — so onboarding keeps waiting rather than falsely declaring success.
+     */
+    private static function botHasBanRight(int $chatId): bool
+    {
+        $bid = self::botId();
+        if ($bid === 0) {
+            return false;
+        }
+        $m = self::getMember($chatId, $bid);
+        if ($m === null) {
+            return false; // uncertain → treat as "no right yet"
+        }
+        return ($m['status'] ?? '') === 'administrator' && !empty($m['can_restrict_members']);
+    }
+
+    /** The group's owner (creator) user_id via a live getChatAdministrators call, or 0. */
+    public static function ownerId(int $chatId): int
+    {
+        $admins = Bot::call('getChatAdministrators', ['chat_id' => $chatId], true);
+        if (is_array($admins)) {
+            foreach ($admins as $a) {
+                if (($a['status'] ?? '') === 'creator') {
+                    return (int) ($a['user']['id'] ?? 0);
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * The bot was promoted/demoted (ban right granted/revoked) — reconcile the onboarding state.
+     * Called from my_chat_member with $byUserId = who made the change.
+     *
+     * A group awaiting owner-verification (a non-owner added it) is sanctioned ONLY when the OWNER
+     * promotes the bot to admin — then the deferred leave is cancelled. Any other actor's change (or
+     * a demotion) keeps the deferred leave.
+     */
+    public static function onBotRightsChanged(int $chatId, int $byUserId = 0): void
+    {
+        $group = self::getGroup($chatId);
+        if ($group === null || (int) ($group['is_active'] ?? 0) !== 1) {
+            return;
+        }
+
+        // One live read of the bot's own membership: is it an admin, and does it have the ban right.
+        $bm          = self::getMember($chatId, self::botId());
+        $botAdmin    = is_array($bm) && ($bm['status'] ?? '') === 'administrator';
+        $hasBanRight = $botAdmin && !empty($bm['can_restrict_members']);
+
+        if (($group['onboarding_adder'] ?? null) !== null) {
+            // Only the OWNER promoting the bot to admin sanctions it and cancels the deferred leave.
+            if ($botAdmin && $byUserId !== 0 && self::isOwner($chatId, $byUserId)) {
+                DB::run("UPDATE " . DB::table('groups') . " SET onboarding_adder = NULL WHERE chat_id = ?", [$chatId]);
+                $group['onboarding_adder'] = null;
+                Logger::info('GroupManager: owner sanctioned a non-owner add', ['chat_id' => $chatId, 'by' => $byUserId]);
+                // fall through to normal rights handling
+            } else {
+                // Not a sanction (non-owner action, or a demotion). Keep the deferred leave; if the
+                // bot lacks the ban right, nudge the owner (if reachable) to grant it.
+                if (!$hasBanRight) {
+                    $ownerId = self::ownerId($chatId);
+                    if ($ownerId !== 0 && self::hasDm($ownerId)) {
+                        Bot::call('sendMessage', [
+                            'chat_id' => $ownerId,
+                            'text'    => Lang::get('group_rights_missing', self::userLangOrDefault($ownerId), ['title' => (string) ($group['title'] ?? $chatId)]),
+                        ]);
+                    }
+                }
+                return;
+            }
+        }
+
+        $waiting = ($group['onboarding_at'] ?? null) !== null;
+
+        if ($hasBanRight) {
+            if ($waiting) {
+                self::onboardingRightsObtained($chatId, $group);
+            }
+            return;
+        }
+
+        // No ban right. If we weren't already waiting, it was just revoked → re-enter the wait and
+        // tell the owner right away if we can reach them (else the cron posts an in-group hint).
+        if (!$waiting) {
+            DB::run(
+                "UPDATE " . DB::table('groups')
+                . " SET onboarding_at = NOW(), onboarding_adder = NULL, onboarding_hint_msg_id = NULL WHERE chat_id = ?",
+                [$chatId]
+            );
+            $ownerId = self::ownerId($chatId);
+            if ($ownerId !== 0 && self::hasDm($ownerId)) {
+                Bot::call('sendMessage', [
+                    'chat_id' => $ownerId,
+                    'text'    => Lang::get('group_rights_missing', self::userLangOrDefault($ownerId), ['title' => (string) ($group['title'] ?? $chatId)]),
+                ]);
+            }
+            Logger::info('GroupManager: ban right revoked → waiting', ['chat_id' => $chatId]);
+        }
+    }
+
+    /** Ban right obtained during onboarding: drop the in-group hint, confirm to the owner, clear. */
+    private static function onboardingRightsObtained(int $chatId, array $group): void
+    {
+        $hintId = (int) ($group['onboarding_hint_msg_id'] ?? 0);
+        if ($hintId > 0) {
+            Bot::call('deleteMessage', ['chat_id' => $chatId, 'message_id' => $hintId], true);
+        }
+        $ownerId = self::ownerId($chatId);
+        if ($ownerId !== 0 && self::hasDm($ownerId)) {
+            Bot::call('sendMessage', [
+                'chat_id' => $ownerId,
+                'text'    => Lang::get('group_rights_ok', self::userLangOrDefault($ownerId), ['title' => (string) ($group['title'] ?? $chatId)]),
+            ]);
+        }
+        self::onboardingClear($chatId);
+        Logger::info('GroupManager: ban right obtained', ['chat_id' => $chatId]);
+    }
+
+    /** Clear all onboarding state for a group. */
+    private static function onboardingClear(int $chatId): void
+    {
+        DB::run(
+            "UPDATE " . DB::table('groups')
+            . " SET onboarding_at = NULL, onboarding_adder = NULL, onboarding_hint_msg_id = NULL WHERE chat_id = ?",
+            [$chatId]
+        );
     }
 
     /**
@@ -820,8 +1018,35 @@ final class GroupManager
     }
 
     // =====================================================================
-    // Per-user DM language
+    // Per-user DM language / open-dialog flag
     // =====================================================================
+
+    /**
+     * Record that the user has an OPEN direct chat with the bot. Called on every inbound private
+     * message (a user can only message the bot if the dialog is open). We DM a user only when this
+     * flag is set, so we never poke a never-opened dialog.
+     */
+    public static function markDm(int $userId): void
+    {
+        if ($userId === 0) {
+            return;
+        }
+        DB::run(
+            "INSERT INTO " . DB::table('users') . " (user_id, lang, has_dm, created_at, updated_at)
+             VALUES (?, '', 1, NOW(), NOW())
+             ON DUPLICATE KEY UPDATE has_dm = 1",
+            [$userId]
+        );
+    }
+
+    /** Whether the user has an open direct chat with the bot (see markDm). */
+    public static function hasDm(int $userId): bool
+    {
+        if ($userId === 0) {
+            return false;
+        }
+        return (int) DB::fetchColumn("SELECT has_dm FROM " . DB::table('users') . " WHERE user_id = ?", [$userId]) === 1;
+    }
 
     /** The user's preferred DM language code, or '' if not chosen yet. */
     public static function getUserLang(int $userId): string
@@ -972,9 +1197,9 @@ final class GroupManager
     // =====================================================================
 
     /**
-     * /start in a DM: set a pending_setup marker (for 10 min). If we don't know the user's
-     * language yet, ask for it first (the dialog follows the language pick); otherwise show the
-     * group-list dialog right away.
+     * /start in a DM: greet + show the user's groups. If we don't know their language yet, ask for
+     * it first (the dialog follows the language pick); otherwise show the group-list dialog right
+     * away. No marker is set — a bot-add is confirmed by DMing the live owner (see onBotAdded).
      *
      * @param array<string, mixed> $user the from object
      */
@@ -984,11 +1209,6 @@ final class GroupManager
         if ($userId === 0) {
             return;
         }
-        DB::run(
-            "INSERT INTO " . DB::table('pending_setup') . " (user_id, started_at) VALUES (?, NOW())
-             ON DUPLICATE KEY UPDATE started_at = NOW()",
-            [$userId]
-        );
         // No language on file → ask for it; the dialog is sent after the user picks (callback).
         if (self::getUserLang($userId) === '') {
             self::promptLanguage($userId);
@@ -1000,8 +1220,8 @@ final class GroupManager
     }
 
     /**
-     * /groups in a DM: just re-show the group list (no greeting, no pending_setup marker). Asks
-     * for a language first if none is on file.
+     * /groups in a DM: just re-show the group list (no greeting). Asks for a language first if none
+     * is on file.
      *
      * @param array<string, mixed> $user the from object
      */
@@ -1023,7 +1243,7 @@ final class GroupManager
      * DM the user the list of groups where they're the OWNER and the bot is connected, plus
      * an "add me to a new group" button. Only owners drive the bot from the DM; other admins
      * reach the panel via a login link the owner shares (they can't DM the bot on their own —
-     * a bot can't start a conversation). Doesn't change pending_setup.
+     * a bot can't start a conversation).
      *
      * @param array<string, mixed> $user
      */
@@ -1078,16 +1298,161 @@ final class GroupManager
     }
 
     /**
-     * Cron: expired (>10 min) pending_setup rows — notify in DM and delete.
+     * Cron: drive the onboarding of groups with a pending state. Phases:
+     *  - onboarding_pending = 1 → a deferred supergroup add awaiting its FIRST onboarding pass;
+     *  - onboarding_adder set   → a deferred owner-check (leave a confirmed non-owner);
+     *  - otherwise              → waiting for the ban right (post/remove the in-group hint).
      */
-    public static function expirePendingSetup(): void
+    public static function runOnboardingChecks(): void
     {
-        $t = DB::table('pending_setup');
-        $rows = DB::fetchAll("SELECT user_id FROM {$t} WHERE started_at < NOW() - INTERVAL 10 MINUTE");
-        foreach ($rows as $r) {
-            $uid = (int) $r['user_id'];
-            Bot::call('sendMessage', ['chat_id' => $uid, 'text' => Lang::get('setup_expired', 'ru')]);
-            DB::run("DELETE FROM {$t} WHERE user_id = ?", [$uid]);
+        $rows = DB::fetchAll(
+            "SELECT chat_id, title, lang, onboarding_pending, onboarding_adder, onboarding_hint_msg_id,
+                    TIMESTAMPDIFF(SECOND, onboarding_at, NOW()) AS age
+               FROM " . DB::table('groups') . "
+              WHERE onboarding_at IS NOT NULL AND is_active = 1"
+        );
+        foreach ($rows as $g) {
+            $chatId = (int) $g['chat_id'];
+            $age    = (int) $g['age'];
+            if ((int) ($g['onboarding_pending'] ?? 0) === 1) {
+                // Let a possible migration land first (migrateChat wipes this row) before we act.
+                if ($age >= 15) {
+                    self::onboardingInitialPass($chatId);
+                }
+            } elseif ($g['onboarding_adder'] !== null) {
+                self::onboardingCheckLeave($chatId, (int) $g['onboarding_adder'], $age);
+            } else {
+                self::onboardingCheckRights($chatId, $g, $age);
+            }
+        }
+    }
+
+    /**
+     * Deferred FIRST onboarding pass for a supergroup add (onboarding_pending was 1). If a migration
+     * happened after the add, migrateChat already wiped this row, so we never get here for it — no
+     * duplicate. Clears the pending flag, then runs the same first pass a basic-group add runs
+     * synchronously.
+     */
+    private static function onboardingInitialPass(int $chatId): void
+    {
+        $group = self::getGroup($chatId);
+        if ($group === null) {
+            return;
+        }
+        $adderId = (int) ($group['onboarding_adder'] ?? 0);
+        // Consume the pending flag (and the temporary adder we stashed): whatever this pass turns
+        // into (onboardStart / deferred leave), the group is no longer "awaiting its first pass".
+        DB::run(
+            "UPDATE " . DB::table('groups') . " SET onboarding_pending = 0, onboarding_adder = NULL, onboarding_at = NULL WHERE chat_id = ?",
+            [$chatId]
+        );
+        self::onboardFirstPass($chatId, $group, $adderId);
+    }
+
+    /**
+     * Deferred owner-check for a suspected non-owner add. We wait 10 min (so any in-flight migration
+     * settles — migrateChat would overwrite the row and cancel this), then leave only on a CONFIRMED
+     * non-owner; an undetermined lookup keeps waiting.
+     */
+    private static function onboardingCheckLeave(int $chatId, int $adderId, int $ageSeconds): void
+    {
+        if ($ageSeconds < 600) {
+            return;
+        }
+        $m = self::getMember($chatId, $adderId);
+        if ($m === null) {
+            return; // still can't determine → retry next tick
+        }
+        // Remove the "grant me the ban right" hint (if we posted one) — its moment has passed.
+        $group  = self::getGroup($chatId);
+        $hintId = (int) (($group['onboarding_hint_msg_id'] ?? 0));
+        if ($hintId > 0) {
+            Bot::call('deleteMessage', ['chat_id' => $chatId, 'message_id' => $hintId], true);
+        }
+
+        if (($m['status'] ?? '') === 'creator') {
+            // The adder was the owner after all (an earlier lookup glitched) → onboard normally.
+            self::onboardingClear($chatId);
+            if ($group !== null) {
+                self::onboardStart($chatId, $group);
+            }
+            return;
+        }
+        // Confirmed non-owner → refuse and leave. Keep the data if it's the owner's existing group
+        // (a non-owner re-added it); a brand-new empty row is dropped.
+        Bot::call('sendMessage', ['chat_id' => $chatId, 'text' => Lang::get('group_owner_only', (string) ($group['lang'] ?? 'ru'))]);
+        Bot::call('leaveChat', ['chat_id' => $chatId]);
+        self::onboardingClear($chatId);
+        self::setActive($chatId, false);
+        self::dropIfEmpty($chatId);
+        Logger::info('GroupManager: non-owner add confirmed — left', ['chat_id' => $chatId, 'by' => $adderId]);
+    }
+
+    /**
+     * "Waiting for the ban right" phase: +1 min → post the in-group hint (only if no open dialog);
+     * +10 min → give up (remove the hint / tell the owner). Rights obtained is normally caught by
+     * my_chat_member; this also reconciles it as a fallback.
+     *
+     * @param array<string, mixed> $g a groups row (chat_id, title, lang, onboarding_hint_msg_id)
+     */
+    private static function onboardingCheckRights(int $chatId, array $g, int $ageSeconds): void
+    {
+        if (self::botHasBanRight($chatId)) {
+            $group = self::getGroup($chatId);
+            if ($group !== null) {
+                self::onboardingRightsObtained($chatId, $group);
+            }
+            return;
+        }
+
+        $ownerId    = self::ownerId($chatId);
+        $dialogOpen = $ownerId !== 0 && self::hasDm($ownerId);
+        $hintId     = (int) ($g['onboarding_hint_msg_id'] ?? 0);
+        $title      = (string) ($g['title'] ?? $chatId);
+
+        if ($ageSeconds >= 600) {
+            if ($hintId > 0) {
+                Bot::call('deleteMessage', ['chat_id' => $chatId, 'message_id' => $hintId], true);
+            }
+            if ($dialogOpen) {
+                Bot::call('sendMessage', [
+                    'chat_id' => $ownerId,
+                    'text'    => Lang::get('group_rights_missing', self::userLangOrDefault($ownerId), ['title' => $title]),
+                ]);
+            }
+            self::onboardingClear($chatId);
+            return;
+        }
+
+        // Post the in-group hint only when the owner is KNOWN but has no open dialog. If the owner
+        // can't be determined (ownerId == 0 — a transient / upgrade still settling) we skip and
+        // retry next tick, so we never flicker a message into a group we can't yet read.
+        if ($ageSeconds >= 60 && $hintId === 0 && $ownerId !== 0 && !$dialogOpen) {
+            $botUser = (string) Config::value('bot', 'BOT_USERNAME', '');
+            $res = Bot::call('sendMessage', [
+                'chat_id' => $chatId,
+                'text'    => Lang::get('group_setup_hint', (string) ($g['lang'] ?? 'ru'), ['bot' => $botUser]),
+            ]);
+            if (is_array($res) && isset($res['message_id'])) {
+                DB::run(
+                    "UPDATE " . DB::table('groups') . " SET onboarding_hint_msg_id = ? WHERE chat_id = ?",
+                    [(int) $res['message_id'], $chatId]
+                );
+            }
+        }
+    }
+
+    /** Delete a group row that holds no data of its own (used after rejecting a fresh non-owner add). */
+    private static function dropIfEmpty(int $chatId): void
+    {
+        $has = (int) DB::fetchColumn(
+            "SELECT (SELECT COUNT(*) FROM " . DB::table('participants') . " WHERE chat_id = ?)
+                  + (SELECT COUNT(*) FROM " . DB::table('messages') . " WHERE chat_id = ?)
+                  + (SELECT COUNT(*) FROM " . DB::table('votes') . " WHERE chat_id = ?)",
+            [$chatId, $chatId, $chatId]
+        );
+        if ($has === 0) {
+            DB::run("DELETE FROM " . DB::table('groups') . " WHERE chat_id = ?", [$chatId]);
         }
     }
 }
