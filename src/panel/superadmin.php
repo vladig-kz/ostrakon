@@ -17,10 +17,23 @@ $fmt = static function (string $ts): string {
     return $ts === '' ? '—' : substr($ts, 0, 16);
 };
 $untitled = Lang::get('panel_group_untitled', $lng);
+
+// The operator area's own base URL (secret slug); ?g= selects a group, ?view=stats is the
+// telemetry page — same secret path, same Basic Auth.
+$superUrl = $base . '/' . rawurlencode(trim((string) Config::value('bot', 'SUPERADMIN_PATH', ''), '/'));
 ?>
 <div class="box">
-    <h1 class="title is-4"><?= htmlspecialchars(Lang::get('panel_hoster', $lng)) ?></h1>
-    <p class="has-text-grey"><?= htmlspecialchars(Lang::get('panel_hoster_intro', $lng)) ?></p>
+    <div class="level is-mobile">
+        <div class="level-left">
+            <div>
+                <h1 class="title is-4"><?= htmlspecialchars(Lang::get('panel_hoster', $lng)) ?></h1>
+                <p class="has-text-grey"><?= htmlspecialchars(Lang::get('panel_hoster_intro', $lng)) ?></p>
+            </div>
+        </div>
+        <div class="level-right">
+            <a class="button is-link is-light" href="<?= htmlspecialchars($superUrl) ?>?view=stats"><?= htmlspecialchars(Lang::get('panel_stats_open', $lng)) ?></a>
+        </div>
+    </div>
 </div>
 
 <div class="columns">
@@ -44,7 +57,7 @@ $untitled = Lang::get('panel_group_untitled', $lng);
                                 <?php
                                     $isCur = $current !== null && $current['chat_id'] === $g['chat_id'];
                                     $name  = ($g['title'] !== null && $g['title'] !== '') ? $g['title'] : $untitled;
-                                    $href  = $base . '/' . rawurlencode(trim((string) Config::value('bot', 'SUPERADMIN_PATH', ''), '/')) . '?g=' . $g['chat_id'];
+                                    $href  = $superUrl . '?g=' . $g['chat_id'];
                                 ?>
                                 <tr<?= $isCur ? ' class="is-selected"' : '' ?>>
                                     <td>

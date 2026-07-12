@@ -17,6 +17,10 @@ The bot is deliberately data-minimal:
 - **Not stored:** the text of ordinary messages and users' first/last names. In full mode only
   message **metadata** is recorded (who, when, in reply to what) — never the content.
 
+Separately, **anonymous telemetry** for the operator page: the event type (bot added / granted the
+ban right / removed / left on its own; a vote opened / how it ended), the group id, and the time. No
+`user_id`, no names, no texts — just counters and dates.
+
 ---
 
 ## How data ages out
@@ -24,7 +28,9 @@ The bot is deliberately data-minimal:
 In full mode, message metadata isn't kept forever: the daily `data_ttl` task deletes records older
 than `halflife_days × 4`. By that age a message's contribution to `score` has fallen to ~6.25% and
 barely affects the rating (see the [Elder formulas](formulas.en.md)). The same task clears stale
-helper context too (for example, the link between reply commands and their notifications).
+helper context too (for example, the link between reply commands and their notifications). The
+operator's anonymous telemetry is kept longer — `max(3× history_days, 365)` days (purged by the same
+`data_ttl`) — so "monthly" trends stay visible.
 
 ---
 

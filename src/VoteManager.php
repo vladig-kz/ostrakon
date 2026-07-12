@@ -124,6 +124,9 @@ final class VoteManager
         );
         $voteId = (int) DB::lastInsertId();
 
+        // Telemetry: a vote was opened (the top of the moderation funnel).
+        Telemetry::record('vote_created', $chatId);
+
         // Suspect marker (created for every vote).
         DB::run(
             "INSERT INTO " . DB::table('suspects') . " (chat_id, user_id, vote_id, is_elder_conflict)
@@ -166,7 +169,7 @@ final class VoteManager
         // (finalize posts the result, to avoid flicker).
         if ($isAdminInit && $adminInstant) {
             Logger::info('VoteManager: admin initiator, instant_ban=on → instant ban', ['vote_id' => $voteId, 'target' => $targetId]);
-            self::finalize($voteId, 'banned');
+            self::finalize($voteId, 'banned', 'admin');
             return;
         }
 
@@ -315,7 +318,7 @@ final class VoteManager
         // An admin's vote finalizes the vote instantly.
         if ($isAdminVoter) {
             self::answer($cbId);
-            self::finalize($voteId, $direction === 'for' ? 'banned' : 'declined');
+            self::finalize($voteId, $direction === 'for' ? 'banned' : 'declined', 'admin');
             return;
         }
         // Ban threshold reached?
@@ -557,7 +560,7 @@ final class VoteManager
         ]);
         if ($res === null && Bot::messageGone()) {
             Logger::warning('VoteManager: vote message was deleted → cancel', null, ['vote_id' => $voteId]);
-            self::finalize($voteId, 'cancelled');
+            self::finalize($voteId, 'cancelled', 'cancelled');
         }
     }
 
@@ -568,14 +571,16 @@ final class VoteManager
     /**
      * Admin finalization by vote id (from a reply-to-notification command in a DM). Returns
      * true if the vote was still active and got finalized, false if it had already finished.
+     * $cause defaults to 'admin' (this path is always an admin action); the data-erasure sweep
+     * passes 'erase' so the telemetry bucket is right.
      */
-    public static function finalizeByAdmin(int $voteId, string $outcome): bool
+    public static function finalizeByAdmin(int $voteId, string $outcome, string $cause = 'admin'): bool
     {
         $status = DB::fetchColumn("SELECT status FROM " . DB::table('votes') . " WHERE id = ?", [$voteId]);
         if ($status !== 'active') {
             return false;
         }
-        self::finalize($voteId, $outcome);
+        self::finalize($voteId, $outcome, $cause);
         return true;
     }
 
@@ -583,8 +588,14 @@ final class VoteManager
      * Finalize a vote: banned | declined | expired | cancelled.
      * Idempotent — the status is switched from 'active' under a row lock, so repeated/racing
      * calls are safe.
+     *
+     * $cause records HOW it ended for telemetry (the same outcome can arrive via different paths —
+     * a group button, a DM command, the cron, a manual Telegram ban): 'community' (threshold reached
+     * by members), 'admin' (an admin forced it), 'manual' (banned directly in Telegram), 'timeout'
+     * (cron), 'cancelled' (vote message deleted), 'erase' (data erasure). One record() call here
+     * covers every path.
      */
-    private static function finalize(int $voteId, string $outcome): void
+    private static function finalize(int $voteId, string $outcome, string $cause = 'community'): void
     {
         $tVotes = DB::table('votes');
 
@@ -598,6 +609,13 @@ final class VoteManager
         DB::commit();
 
         $chatId = (int) $vote['chat_id'];
+
+        // Telemetry: counted exactly once (we only get past the commit when flipping active → done).
+        $event = self::telemetryEvent($outcome, $cause);
+        if ($event !== null) {
+            Telemetry::record($event, $chatId);
+        }
+
         $group  = GroupManager::getGroup($chatId);
         if ($group === null) {
             return;
@@ -660,6 +678,28 @@ final class VoteManager
                 self::scheduleDelete($chatId, $msgId, (int) ($group['cleanup_delay_seconds'] ?? 60));
             }
             DB::run("UPDATE {$tVotes} SET vote_message_id = NULL WHERE id = ?", [$voteId]);
+        }
+    }
+
+    /**
+     * Map a finalization (outcome + cause) to a telemetry event code, or null if not counted.
+     * "community reached for/against", "admin forced it", "manual TG ban", "timeout", "cancelled"
+     * are separate buckets so the operator sees the funnel the way it actually happens.
+     */
+    private static function telemetryEvent(string $outcome, string $cause): ?string
+    {
+        switch ($outcome) {
+            case 'banned':
+                return $cause === 'admin' ? 'vote_banned_admin'
+                    : ($cause === 'manual' ? 'vote_banned_manual' : 'vote_banned_vote');
+            case 'declined':
+                return $cause === 'admin' ? 'vote_declined_admin' : 'vote_declined_vote';
+            case 'expired':
+                return 'vote_expired';
+            case 'cancelled':
+                return $cause === 'admin' ? 'vote_cancelled_admin' : 'vote_cancelled';
+            default:
+                return null;
         }
     }
 
@@ -735,7 +775,7 @@ final class VoteManager
             $expired = ((int) $row['has_against'] === 0 && (int) $row['past_t1'] === 1)
                     || ((int) $row['has_against'] === 1 && (int) $row['past_t2'] === 1);
             if ($expired) {
-                self::finalize((int) $row['id'], 'expired');
+                self::finalize((int) $row['id'], 'expired', 'timeout');
             }
         }
     }
@@ -792,7 +832,7 @@ final class VoteManager
         );
         $n = 0;
         foreach ($rows as $row) {
-            if (self::finalizeByAdmin((int) $row['id'], 'cancelled')) {
+            if (self::finalizeByAdmin((int) $row['id'], 'cancelled', 'erase')) {
                 $n++;
             }
         }
@@ -807,7 +847,7 @@ final class VoteManager
             [$chatId, $userId]
         );
         if ($voteId !== null) {
-            self::finalize((int) $voteId, 'banned');
+            self::finalize((int) $voteId, 'banned', 'manual');
         }
     }
 

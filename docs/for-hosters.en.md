@@ -148,6 +148,14 @@ them before shutting the service down. The operator needs to know **nothing abou
 data is fetched server-side with the bot token, and this page has nothing to do with the Telegram
 login.
 
+A separate page (the **“📊 Statistics”** button at the top) shows a **statistics summary** (aggregate
+across all groups, not tied to any single one): last 7 days, last 30 days, and all time. For the bot — how often it was added,
+granted the ban right, removed, and how often it left on its own (added, nobody figured it out). For
+votes — how many were opened and how they ended: banned by "for" votes, declined by "against" votes,
+an admin decision (ban/decline/cancel), a manual Telegram ban, or a timeout. Counters and dates only
+— no names, no texts, no personal data. History is kept longer than operational data
+(`max(3× history_days, 365)` days) so you can look at "monthly" trends.
+
 The page lives at a **secret address you choose** — `SUPERADMIN_PATH` in `config/bot.php` (a random
 slug → `APP_URL/<slug>`) — and is protected by **HTTP Basic Auth** (`SUPERADMIN_TOKEN`, stored as
 `base64("login:password")`). Two independent layers: a secret URL and a password. Leave

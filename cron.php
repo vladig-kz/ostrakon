@@ -190,7 +190,10 @@ function cron_dispatch(string $task): void
             $msgs  = ScoreManager::purgeOldMessages($days);
             $votes = VoteManager::purgeOldVotes($days);
             $acts  = Notifier::purgeOldActions($days);
-            Logger::info('cron: data_ttl', ['days' => $days, 'messages' => $msgs, 'votes' => $votes, 'notify_actions' => $acts]);
+            // Aggregate telemetry (no personal data) is kept far longer than user data so the
+            // operator can look back over "months": max(3× the history window, a year).
+            $telem = Telemetry::purgeOld(max(3 * $days, 365));
+            Logger::info('cron: data_ttl', ['days' => $days, 'messages' => $msgs, 'votes' => $votes, 'notify_actions' => $acts, 'telemetry' => $telem]);
             break;
 
         default:

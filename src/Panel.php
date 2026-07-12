@@ -310,6 +310,16 @@ final class Panel
             return; // 401 challenge / 404 already sent
         }
 
+        // Telemetry lives on its own page (same secret path + Basic Auth, selected by ?view=stats),
+        // so the overview stays compact — like ?g= selects a group below.
+        if (($_GET['view'] ?? '') === 'stats') {
+            self::render('superadmin_stats', [
+                'title' => Lang::get('panel_stats', self::lang()),
+                'stats' => Telemetry::summary(),
+            ]);
+            return;
+        }
+
         $groups = GroupManager::hosterGroups();
 
         // Right pane: the roster of one selected group — only if it's really one we serve.

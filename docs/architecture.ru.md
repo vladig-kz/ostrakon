@@ -32,6 +32,7 @@
 │   ├── VoteManager.php     # голосования: инициирование, подсчёт, пороги, финал, таймауты
 │   ├── ScoreManager.php    # режим full: метаданные сообщений, пересчёт score, теги/статус аксакала
 │   ├── Notifier.php        # личные уведомления в ЛС + команды-ответы на них
+│   ├── Telemetry.php       # обезличенные метрики оператора (журнал событий + сводка для панели)
 │   ├── Exporter.php        # экспорт/импорт JSON для переноса группы между инстансами
 │   ├── Panel.php / PanelAuth.php   # веб-панель (роутер + вход через Telegram Login)
 │   ├── panel/              # серверные шаблоны панели (без веб-доступа):
@@ -55,7 +56,8 @@
 │   ├── 009_group_active/   # groups.is_active (бот подключён / удалён)
 │   ├── 010_vote_thread/    # votes.thread_id (форум-топики: голосование в теме триггера)
 │   ├── 011_onboarding/     # состояние онбординга группы + users.has_dm; удаление pending_setup
-│   └── 012_onboarding_pending/ # groups.onboarding_pending (отложенный онбординг супергрупп)
+│   ├── 012_onboarding_pending/ # groups.onboarding_pending (отложенный онбординг супергрупп)
+│   └── 013_telemetry/      # таблица telemetry (обезличенные метрики оператора)
 └── logs/                   # app.log + lock-файл cron (веб-доступ запрещён)
 ```
 

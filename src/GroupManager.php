@@ -237,6 +237,7 @@ final class GroupManager
 
         $group = self::ensureGroup($chatId, $title);
         self::setActive($chatId, true);
+        Telemetry::record('bot_added', $chatId);
         Logger::info('GroupManager: bot added to group', ['chat_id' => $chatId, 'existed' => $existed]);
 
         // A migration ALWAYS produces a supergroup, so a SUPERGROUP add might be a genuine add OR a
@@ -342,6 +343,7 @@ final class GroupManager
 
         if (self::botHasBanRight($chatId)) {
             self::onboardingClear($chatId); // already fully working
+            Telemetry::record('bot_admin_granted', $chatId); // added straight as admin with the ban right
             return;
         }
         // No ban right yet → wait for it (adder = NULL marks the "waiting for rights" phase).
@@ -361,6 +363,11 @@ final class GroupManager
         // Keep the data (a re-add reuses settings/history; it's also exportable) but flag the
         // group inactive so we stop live-querying and listing it.
         self::setActive($chatId, false);
+        // Telemetry: a human kick/removal — but our OWN self-leave (onboardingCheckLeave → leaveChat)
+        // also surfaces here as a left event, so skip the duplicate if we just recorded bot_left.
+        if (!Telemetry::recordedRecently('bot_left', $chatId, 120)) {
+            Telemetry::record('bot_removed', $chatId);
+        }
         Logger::info('GroupManager: bot removed from group (kept, marked inactive)', ['chat_id' => $chatId]);
     }
 
@@ -630,6 +637,7 @@ final class GroupManager
             ]);
         }
         self::onboardingClear($chatId);
+        Telemetry::record('bot_admin_granted', $chatId);
         Logger::info('GroupManager: ban right obtained', ['chat_id' => $chatId]);
     }
 
@@ -1501,6 +1509,9 @@ final class GroupManager
         // (a non-owner re-added it); a brand-new empty row is dropped.
         Bot::call('sendMessage', ['chat_id' => $chatId, 'text' => Lang::get('group_owner_only', (string) ($group['lang'] ?? 'ru'))]);
         Bot::call('leaveChat', ['chat_id' => $chatId]);
+        // Telemetry: the bot left on its own ("added, nobody figured it out"). Recorded here so the
+        // resulting left→onBotRemoved event can tell this apart from a human kick (see onBotRemoved).
+        Telemetry::record('bot_left', $chatId);
         self::onboardingClear($chatId);
         self::setActive($chatId, false);
         self::dropIfEmpty($chatId);

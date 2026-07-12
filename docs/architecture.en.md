@@ -32,6 +32,7 @@ in [For the bot's host](for-hosters.en.md). For an overview, see the [README](..
 │   ├── VoteManager.php     # voting: initiate, tally, thresholds, finalize, timeouts
 │   ├── ScoreManager.php    # full mode: message metadata, score recalc, elder tags/status
 │   ├── Notifier.php        # personal DM notifications + reply-to-notification commands
+│   ├── Telemetry.php       # anonymous operator metrics (event log + panel summary)
 │   ├── Exporter.php        # JSON export/import to move a group between instances
 │   ├── Panel.php / PanelAuth.php   # web admin panel (router + Telegram Login auth)
 │   ├── panel/              # server-rendered panel views (not web-accessible):
@@ -55,7 +56,8 @@ in [For the bot's host](for-hosters.en.md). For an overview, see the [README](..
 │   ├── 009_group_active/   # groups.is_active (bot connected / removed)
 │   ├── 010_vote_thread/    # votes.thread_id (forum topics: the vote posts in the trigger's topic)
 │   ├── 011_onboarding/     # group onboarding state + users.has_dm; drops pending_setup
-│   └── 012_onboarding_pending/ # groups.onboarding_pending (deferred supergroup onboarding)
+│   ├── 012_onboarding_pending/ # groups.onboarding_pending (deferred supergroup onboarding)
+│   └── 013_telemetry/      # telemetry table (anonymous operator metrics)
 └── logs/                   # app.log + cron lock file (web access denied)
 ```
 
