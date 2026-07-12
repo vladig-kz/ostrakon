@@ -189,6 +189,11 @@ final class Exporter
             throw $e;
         }
 
+        // Safety: can_manage may only be held by a live group admin (and the UI lets only the owner
+        // grant it). The imported file could carry the flag for arbitrary users — strip it from
+        // anyone who isn't currently an admin of this group.
+        self::sanitizeManagers($chatId);
+
         // Recompute score + elder status/tags now (full mode) so imported elders show right
         // away, not only after the next daily score_recalc. Done after commit (it calls
         // Telegram for tags); silent — no elder notifications for the backfilled history.
@@ -230,7 +235,16 @@ final class Exporter
             $row['is_active'],
             $row['onboarding_at'], $row['onboarding_adder'], $row['onboarding_hint_msg_id'], $row['onboarding_pending']
         );
+        // Never trust the file's keys as SQL identifiers (they're inlined into the column list and
+        // ON DUPLICATE KEY UPDATE below). Keep only keys that are real columns of the groups table.
+        $known = GroupManager::getGroup($chatId);
+        if (is_array($known)) {
+            $row = array_intersect_key($row, $known);
+        }
         $row['chat_id'] = $chatId;
+        if ($row === []) {
+            return;
+        }
         $cols = array_keys($row);
         $set  = [];
         foreach ($cols as $c) {
@@ -333,6 +347,36 @@ final class Exporter
         DB::run(
             "INSERT INTO {$t} (" . implode(', ', self::SUSPECT_COLS) . ") VALUES ({$placeholders})",
             $vals
+        );
+    }
+
+    /**
+     * Strip the can_manage flag from any participant who isn't currently a live admin of the group.
+     * The manage right (settings/simulator/migration) is meaningful only for admins and is meant to
+     * be granted by the owner alone — so an imported flag must never confer it on a non-admin.
+     */
+    private static function sanitizeManagers(int $chatId): void
+    {
+        $admins = Bot::call('getChatAdministrators', ['chat_id' => $chatId], true);
+        $ids = [];
+        if (is_array($admins)) {
+            foreach ($admins as $a) {
+                $uid = (int) ($a['user']['id'] ?? 0);
+                if ($uid !== 0) {
+                    $ids[] = $uid;
+                }
+            }
+        }
+        $t = DB::table('participants');
+        if ($ids === []) {
+            // Couldn't read the admin list (or there are none) → clear the flag for everyone (fail closed).
+            DB::run("UPDATE {$t} SET can_manage = 0 WHERE chat_id = ? AND can_manage = 1", [$chatId]);
+            return;
+        }
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        DB::run(
+            "UPDATE {$t} SET can_manage = 0 WHERE chat_id = ? AND can_manage = 1 AND user_id NOT IN ({$in})",
+            array_merge([$chatId], $ids)
         );
     }
 

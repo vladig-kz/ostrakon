@@ -162,17 +162,19 @@ function superadmin_gentoken_cli(array $argv): void
         echo "Login must not contain ':'.\n";
         return;
     }
-    $password = superadmin_gen_password();
-    $token    = base64_encode($login . ':' . $password);
-    $slug     = superadmin_gen_slug();
-    $appUrl   = rtrim((string) Config::value('bot', 'APP_URL', ''), '/');
+    $password    = superadmin_gen_password();
+    $token       = base64_encode($login . ':' . $password);
+    $slug        = superadmin_gen_slug();
+    $workerToken = bin2hex(random_bytes(24));
+    $appUrl      = rtrim((string) Config::value('bot', 'APP_URL', ''), '/');
 
     echo "=== Superadmin credentials ===\n\n";
     echo "  login:    {$login}\n";
     echo "  password: {$password}\n\n";
     echo "Put these into config/bot.php:\n\n";
     echo "  'SUPERADMIN_TOKEN' => '{$token}',\n";
-    echo "  'SUPERADMIN_PATH'  => '{$slug}',\n\n";
+    echo "  'SUPERADMIN_PATH'  => '{$slug}',\n";
+    echo "  'WORKER_TOKEN'     => '{$workerToken}',\n\n";
     echo "Superadmin page: " . ($appUrl !== '' ? $appUrl : 'APP_URL') . "/{$slug}\n";
     echo "Log in with the login/password above (the browser's Basic Auth prompt).\n";
     echo "Keep the password — it is NOT stored anywhere in plain text.\n";
@@ -279,7 +281,7 @@ function superadmin_bootstrap_form(?string $error, bool $writable): void
  */
 function register_bot_commands(): bool
 {
-    $commands  = ['start', 'groups', 'language', 'help'];
+    $commands  = ['start', 'groups', 'language', 'help', 'privacy'];
     $scope     = ['type' => 'all_private_chats'];
     $available = array_keys(Lang::available());
     if ($available === []) {
@@ -369,6 +371,20 @@ try {
 
 $prefix = (string) Config::value('db', 'DB_TABLE_PREFIX', '');
 out('  • table prefix: ' . ($prefix !== '' ? $prefix : '(empty)'));
+
+// Ensure a WORKER_TOKEN exists: a separate low-privilege secret used ONLY to trigger the worker
+// (cron.php / the webhook self-poke). Generated once and written to config/bot.php; it never
+// reuses SUPERADMIN_TOKEN, so a cron URL that leaks into access logs can't expose the master secret.
+$workerToken = (string) Config::value('bot', 'WORKER_TOKEN', '');
+if ($workerToken === '') {
+    $workerToken = bin2hex(random_bytes(24));
+    if (superadmin_write_bot_config(['WORKER_TOKEN' => $workerToken])) {
+        out('  ✓ WORKER_TOKEN generated and saved to config/bot.php');
+    } else {
+        out('  • config/bot.php not writable — add this line yourself:');
+        out("      'WORKER_TOKEN' => '{$workerToken}',");
+    }
+}
 out('');
 
 // ---------------------------------------------------------------------------

@@ -26,8 +26,12 @@ $isCli = (PHP_SAPI === 'cli');
 
 if (!$isCli) {
     header('Content-Type: text/plain; charset=utf-8');
-    $expected = (string) Config::value('bot', 'SUPERADMIN_TOKEN', '');
-    $given    = (string) ($_GET['token'] ?? '');
+    // Worker trigger token — a SEPARATE, low-privilege secret (NOT SUPERADMIN_TOKEN): it only lets
+    // a caller start the worker and never touches the DB or the operator panel. Accepted from the
+    // X-Ostrakon-Token header (webhook.php's self-poke) OR the ?token= query string (for URL-based
+    // "curl-cron" services that can't send custom headers). No fallback to SUPERADMIN_TOKEN.
+    $expected = (string) Config::value('bot', 'WORKER_TOKEN', '');
+    $given    = (string) ($_SERVER['HTTP_X_OSTRAKON_TOKEN'] ?? $_GET['token'] ?? '');
     if ($expected === '' || !hash_equals($expected, $given)) {
         http_response_code(403);
         echo "Forbidden.\n";

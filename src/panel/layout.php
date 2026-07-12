@@ -44,5 +44,8 @@ $me   = PanelAuth::user();
         <?= $content ?? '' ?>
     </div>
 </section>
+<footer class="section py-4 has-text-centered">
+    <a class="btn-link" href="<?= htmlspecialchars($base) ?>/admin/privacy"><?= htmlspecialchars(Lang::get('panel_privacy', $lng)) ?></a>
+</footer>
 </body>
 </html>

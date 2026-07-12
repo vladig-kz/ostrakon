@@ -778,6 +778,27 @@ final class VoteManager
         }
     }
 
+    /**
+     * Cancel every active vote in a group that involves the given user (as target or initiator).
+     * Used before erasing a user's data so no live vote is left pointing at a removed participant.
+     * Returns the number of votes cancelled.
+     */
+    public static function cancelActiveForUser(int $chatId, int $userId): int
+    {
+        $rows = DB::fetchAll(
+            "SELECT id FROM " . DB::table('votes') . "
+              WHERE chat_id = ? AND status = 'active' AND (target_id = ? OR initiator_id = ?)",
+            [$chatId, $userId, $userId]
+        );
+        $n = 0;
+        foreach ($rows as $row) {
+            if (self::finalizeByAdmin((int) $row['id'], 'cancelled')) {
+                $n++;
+            }
+        }
+        return $n;
+    }
+
     /** Manual ban (an admin banned directly in Telegram): close the active vote as a ban. */
     public static function onManualBan(int $chatId, int $userId): void
     {

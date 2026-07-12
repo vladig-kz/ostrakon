@@ -14,7 +14,7 @@ declare(strict_types=1);
 final class PanelAuth
 {
     private const SESSION_KEY = 'admin_user';
-    private const AUTH_TTL    = 86400; // accept widget data no older than a day
+    private const AUTH_TTL    = 900; // accept signed login data for 15 min — limits replay of the signed login URL leaked via access logs / browser history
 
     public static function startSession(): void
     {

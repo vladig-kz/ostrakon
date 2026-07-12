@@ -66,16 +66,20 @@ function trigger_worker(): void
         return;
     }
     $appUrl = rtrim((string) Config::value('bot', 'APP_URL', ''), '/');
-    $token  = (string) Config::value('bot', 'SUPERADMIN_TOKEN', '');
+    $token  = (string) Config::value('bot', 'WORKER_TOKEN', '');
     if ($appUrl === '' || $token === '') {
         return;
     }
-    $ch = curl_init($appUrl . '/cron.php?token=' . urlencode($token));
+    // Send the worker token in a request HEADER, not the query string: a ?token= would be written
+    // into the web server's access log on every single update. cron.php still accepts ?token= for
+    // URL-cron services that can't set headers, but our own self-poke has no reason to leak it.
+    $ch = curl_init($appUrl . '/cron.php');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_NOSIGNAL       => true,
         CURLOPT_CONNECTTIMEOUT => 1,
         CURLOPT_TIMEOUT_MS     => 300,
+        CURLOPT_HTTPHEADER     => ['X-Ostrakon-Token: ' . $token],
     ]);
     curl_exec($ch);
     curl_close($ch);

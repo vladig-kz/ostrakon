@@ -727,6 +727,110 @@ final class GroupManager
     }
 
     /**
+     * Resolve a "@username or numeric id" query to candidate participants of THIS group (the Bot
+     * API can't look up a user by @username, so we match our own stored data). A numeric query is
+     * matched as a user_id; otherwise as a username (case-insensitive, leading @ ignored). Usually
+     * one match; more than one is possible if a username was reused across accounts over time.
+     *
+     * @return array<int, array{user_id:int, username:string}>
+     */
+    public static function findParticipantsByQuery(int $chatId, string $query): array
+    {
+        $query = ltrim(trim($query), '@');
+        if ($query === '') {
+            return [];
+        }
+        $t = DB::table('participants');
+        // Telegram usernames must contain a letter, so an all-digit query is a user_id.
+        if (ctype_digit($query)) {
+            $rows = DB::fetchAll(
+                "SELECT user_id, username FROM {$t} WHERE chat_id = ? AND user_id = ?",
+                [$chatId, (int) $query]
+            );
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+        return DB::fetchAll(
+            "SELECT user_id, username FROM {$t} WHERE chat_id = ? AND LOWER(username) = LOWER(?)",
+            [$chatId, $query]
+        );
+    }
+
+    /**
+     * Erase one user's data from a group (privacy request, run by an owner/manager). Fully deletes
+     * data that belongs to the user alone; only ANONYMIZES them inside shared vote rows so other
+     * participants' voting history and everyone's elder scores (which are computed from messages,
+     * not votes) stay intact. Global per-user state (users: DM language/opt-in, spans other groups)
+     * is intentionally left untouched. Returns per-target row counts.
+     *
+     * @return array<string, int>
+     */
+    public static function eraseUserData(int $chatId, int $userId): array
+    {
+        if ($userId === 0) {
+            return [];
+        }
+        // Close any active vote involving this user first, so anonymizing them below can't disturb
+        // a live vote (it would otherwise lose its target/initiator mid-flight).
+        VoteManager::cancelActiveForUser($chatId, $userId);
+
+        $counts = [];
+        DB::begin();
+        try {
+            $counts['messages'] = DB::run(
+                "DELETE FROM " . DB::table('messages') . " WHERE chat_id = ? AND user_id = ?",
+                [$chatId, $userId]
+            )->rowCount();
+
+            // The user's OWN cast votes (vote_records has no chat_id → scope via this chat's votes).
+            $counts['votes_cast'] = DB::run(
+                "DELETE vr FROM " . DB::table('vote_records') . " vr
+                   JOIN " . DB::table('votes') . " v ON v.id = vr.vote_id
+                  WHERE v.chat_id = ? AND vr.voter_id = ?",
+                [$chatId, $userId]
+            )->rowCount();
+
+            $counts['suspects'] = DB::run(
+                "DELETE FROM " . DB::table('suspects') . " WHERE chat_id = ? AND user_id = ?",
+                [$chatId, $userId]
+            )->rowCount();
+
+            // Anonymize the user inside shared votes (keep the vote + other voters' records).
+            $counts['as_target'] = DB::run(
+                "UPDATE " . DB::table('votes') . "
+                    SET target_id = 0, trigger_text = NULL, trigger_msg_id = NULL, trigger_date = NULL
+                  WHERE chat_id = ? AND target_id = ?",
+                [$chatId, $userId]
+            )->rowCount();
+            $counts['as_initiator'] = DB::run(
+                "UPDATE " . DB::table('votes') . " SET initiator_id = 0 WHERE chat_id = ? AND initiator_id = ?",
+                [$chatId, $userId]
+            )->rowCount();
+
+            // Notification-action context (DM reply commands) referencing this user.
+            $counts['notify_actions'] = DB::run(
+                "DELETE FROM " . DB::table('notify_actions') . " WHERE chat_id = ? AND (user_id = ? OR target_id = ?)",
+                [$chatId, $userId, $userId]
+            )->rowCount();
+
+            $counts['participant'] = DB::run(
+                "DELETE FROM " . DB::table('participants') . " WHERE chat_id = ? AND user_id = ?",
+                [$chatId, $userId]
+            )->rowCount();
+
+            DB::commit();
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Logger::error('GroupManager: eraseUserData failed', $e, ['chat_id' => $chatId, 'user' => $userId]);
+            throw $e;
+        }
+
+        Logger::info('GroupManager: user data erased', array_merge(['chat_id' => $chatId, 'user' => $userId], $counts));
+        return $counts;
+    }
+
+    /**
      * Participants list for the panel: search (username/id), sort, pagination.
      *
      * @return array{rows: array<int, array<string, mixed>>, total: int}
@@ -1081,6 +1185,21 @@ final class GroupManager
             'chat_id' => $userId,
             'text'    => Lang::get('dm_help', self::userLangOrDefault($userId), ['bot' => $botUser]),
         ]);
+    }
+
+    /** Send the privacy notice in a DM (full text + a link to the web version). */
+    public static function sendPrivacy(int $userId): void
+    {
+        if ($userId === 0) {
+            return;
+        }
+        $lang   = self::userLangOrDefault($userId);
+        $appUrl = rtrim((string) Config::value('bot', 'APP_URL', ''), '/');
+        $text   = Lang::get('privacy_title', $lang) . "\n\n" . Lang::get('privacy_body', $lang);
+        if ($appUrl !== '') {
+            $text .= "\n\n" . Lang::get('privacy_web_hint', $lang, ['url' => $appUrl . '/admin/privacy']);
+        }
+        Bot::call('sendMessage', ['chat_id' => $userId, 'text' => $text, 'disable_web_page_preview' => true]);
     }
 
     /** Store the user's preferred DM language (ignored if the code isn't one of ours). */

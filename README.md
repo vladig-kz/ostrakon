@@ -89,6 +89,19 @@ Placement is configured by `APP_URL` and supports both:
 - a subdomain: `https://ostrakon.example.com`
 - a subfolder: `https://example.com/ostrakon`
 
+### Security notes
+
+- **`WEBHOOK_SECRET`** must be a long random string: anyone who learns it can POST forged
+  updates to `webhook.php` (fake votes/bans). Optionally also restrict `webhook.php` to
+  Telegram's IP ranges at the web-server level.
+- **Delete `install.php`, `log.php`, `inspect.php`** after deploying; leave `DEV_TOKEN` empty.
+- Keep `SUPERADMIN_TOKEN` out of URLs; the cron/worker uses the separate low-privilege
+  `WORKER_TOKEN`.
+- On **shared hosting**, point PHP sessions at a private directory inside the project
+  (`session.save_path` + `open_basedir`) so other tenants can't read the panel's session files.
+  `config/`, `src/`, `logs/` must be denied over HTTP — the bundled `.htaccess` does this on
+  Apache; on Nginx configure it yourself.
+
 ---
 
 ## Project structure
@@ -208,9 +221,12 @@ curl -F "url=https://YOUR_DOMAIN/webhook.php" \
 6. **⚠️ Delete `install.php`** after a successful install.
 7. **Add a system cron** for `cron.php` (every minute is ideal):
    - CLI: `* * * * * /usr/bin/php /full/path/to/cron.php >/dev/null 2>&1`
-   - or URL: `https://YOUR_DOMAIN/cron.php?token=YOUR_SUPERADMIN_TOKEN`
+   - or URL: `https://YOUR_DOMAIN/cron.php?token=YOUR_WORKER_TOKEN` (for a URL-cron service that
+     can't send headers; the low-privilege `WORKER_TOKEN` is used here on purpose — never
+     `SUPERADMIN_TOKEN`)
 8. Make sure `logs/` is writable by the web server.
-9. (Optional) Remove the dev tools `log.php` and `inspect.php` in production.
+9. **Delete the dev tools** `log.php` and `inspect.php` in production (debugging only). As a
+   safety net they also stay disabled unless `DEV_TOKEN` is set in `config/bot.php` (empty by default).
 
 The installer is idempotent (`CREATE TABLE IF NOT EXISTS`, `INSERT IGNORE`, tracked
 migrations) — re-running it is safe.
@@ -225,9 +241,11 @@ migrations) — re-running it is safe.
 | `APP_URL` | Full public address (host+path, no trailing `/`); the single source of all URLs |
 | `BOT_TOKEN` | Token from @BotFather |
 | `BOT_USERNAME` | Bot username without `@` (Login Widget + mention detection) |
-| `WEBHOOK_SECRET` | Verified against the `X-Telegram-Bot-Api-Secret-Token` header |
-| `SUPERADMIN_TOKEN` | `base64("login:password")`. Gates `cron.php`/`install.php`/`migrations/run.php` over HTTP (and the worker self-trigger), **and** is the HTTP Basic Auth credential for the superadmin page. Set on the first `install.php` run |
-| `SUPERADMIN_PATH` | Secret slug of the superadmin page → `APP_URL/<slug>`; empty disables it (see the panel section) |
+| `WEBHOOK_SECRET` | Verified against the `X-Telegram-Bot-Api-Secret-Token` header on every update. **Use a long random value** — anyone who learns it can forge updates (fake votes/bans) |
+| `WORKER_TOKEN` | Low-privilege secret that ONLY triggers the worker (`cron.php`). The webhook self-poke sends it in the `X-Ostrakon-Token` header; URL-cron services pass it as `?token=`. Kept separate from `SUPERADMIN_TOKEN` so a cron URL in access logs can't leak the master secret. Generated on the first `install.php` run |
+| `SUPERADMIN_TOKEN` | `base64("login:password")`. Gates `install.php`/`migrations/run.php` over HTTP, the dev tools, **and** is the HTTP Basic Auth credential for the superadmin page. Keep it OUT of URLs. Set on the first `install.php` run |
+| `SUPERADMIN_PATH` | Secret slug of the superadmin page → `APP_URL/<slug>`; empty disables it (see the panel section). **Must not contain `admin`** — such a slug would collide with the panel and is ignored |
+| `DEV_TOKEN` | Dedicated secret for the debug endpoints `log.php`/`inspect.php` (separate from `SUPERADMIN_TOKEN`). **Empty by default → those endpoints are disabled** (answer `404` even if left on the server). Set a random value only while debugging |
 | `LOG_LEVEL` | `trace`/`debug`/`info`/`warning`/`error`/`fatal` |
 
 ### `config/db.php`
@@ -385,8 +403,11 @@ succeed (tracked in `{prefix}migrations`). Use `{prefix}` for table names in `.s
 above the threshold are written. Use `debug`/`trace` while debugging, `warning`/`error` in
 production.
 
-Dev-only helpers (consider removing in production): `log.php` (view/clear the log) and
-`inspect.php` (inspect/edit the DB). Both are gated by `SUPERADMIN_TOKEN` → cookie.
+Dev-only helpers — **delete them in production**: `log.php` (view/clear the log) and
+`inspect.php` (inspect/edit the DB — arbitrary SQL). They are gated by their own `DEV_TOKEN`
+(separate from `SUPERADMIN_TOKEN`) and are **disabled unless `DEV_TOKEN` is set** — empty by
+default, so they answer `404` even if the files remain. First visit with `?token=DEV_TOKEN`
+sets a cookie. CLI use is always allowed.
 
 ---
 

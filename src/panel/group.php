@@ -24,7 +24,7 @@ $name = (isset($group['title']) && (string) $group['title'] !== '')
         · <?= htmlspecialchars(Lang::get('panel_group_mode', $lng)) ?>: <strong><?= htmlspecialchars((string) ($group['mode'] ?? '')) ?></strong>
     </p>
 
-    <?php $canManage = !empty($canManage); ?>
+    <?php $canManage = !empty($canManage); $isOwner = !empty($isOwner); ?>
     <div class="buttons">
         <a class="button is-primary" href="<?= htmlspecialchars($base) ?>/admin/group/<?= (int) $group['chat_id'] ?>/participants">
             <?= htmlspecialchars(Lang::get('panel_open_participants', $lng)) ?>
@@ -41,6 +41,12 @@ $name = (isset($group['title']) && (string) $group['title'] !== '')
                     <?= htmlspecialchars(Lang::get('panel_open_simulator', $lng)) ?>
                 </a>
             <?php endif; ?>
+            <a class="button is-danger is-light" href="<?= htmlspecialchars($base) ?>/admin/group/<?= (int) $group['chat_id'] ?>/erase">
+                <?= htmlspecialchars(Lang::get('panel_open_erase', $lng)) ?>
+            </a>
+        <?php endif; ?>
+        <?php // Export/import is owner-only (it can rewrite all group data and historical flags). ?>
+        <?php if ($isOwner): ?>
             <a class="button is-warning is-light" href="<?= htmlspecialchars($base) ?>/admin/group/<?= (int) $group['chat_id'] ?>/migration">
                 <?= htmlspecialchars(Lang::get('panel_open_migration', $lng)) ?>
             </a>

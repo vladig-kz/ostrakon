@@ -44,6 +44,20 @@ return [
     'cmd_desc_groups'   => 'your groups and panel links',
     'cmd_desc_language' => 'change language',
     'cmd_desc_help'     => 'help',
+    'cmd_desc_privacy'  => 'what data the bot stores',
+
+    // Privacy notice (DM /privacy command + public web page /admin/privacy). Paragraphs are
+    // separated by a blank line (\n\n); the web page renders each as its own block.
+    'privacy_title'     => 'Privacy notice',
+    'privacy_web_hint'  => 'Full version: {url}',
+    'panel_privacy'     => 'Privacy',
+    'privacy_body'      =>
+        "Ostrakon is open-source software. This bot is run by whoever installed it (the operator). The operator — not the authors of the software — is responsible for the data described here.\n\n" .
+        "What is stored, per group: your Telegram user ID, your @username if you have one, and the time you joined. In full mode the bot also stores message METADATA — who sent a message, when, and which message it replied to — but NEVER the text or media of your messages. It also records ban votes: who started a vote, who the target was, and how each participant voted, and it keeps a suspect marker for anyone put to a vote.\n\n" .
+        "Why: this data is used only to run the ban voting — to check who may vote (time in the group and, in full mode, activity), to weigh votes (the elder status), to prevent abuse, and to show admins a history.\n\n" .
+        "How long: message metadata is deleted automatically after roughly halflife x4 days; votes and history after the configured retention period (365 days by default). The operator can change these periods.\n\n" .
+        "Sharing: your data stays on the operator's server. It is not sold. A group's admins can export the group's data to move it to another instance of the bot.\n\n" .
+        "Your choices: to have your data removed, ask the group's owner or admins, or the operator. When the bot is removed from a group it stops collecting new data there.",
     'dm_help'           => "I’m Ostrakon, a bot for voting to ban spammers: the group decides who to kick, I enforce it.\n\nHow to connect me to a group (group owner only):\n1) Add me to the group — with the “Add me to a group” button (see /start) or the usual Telegram way.\n2) Make me an administrator with the “Ban users” right (required); ideally also “Delete messages” and “Manage tags” (for the elder tag).\n3) Everything else is set up in the web panel.\n\nHow to use me:\n• Start a vote: in the group, reply to a spammer’s message and mention @{bot}.\n• Management is in the web panel (settings, participants, journal). /start gives you the panel link and your groups.\n• Notifications arrive here; enable them in the panel. You can reply to a notification with a command:\n  — on “vote started”: forceban — ban, cancelban — cancel, protect — cancel and protect;\n  — on “user banned”: unban — unban, protect — protect.\n\nCommands: /start — start, /groups — your groups and panel links, /language — language, /help — this help.",
     'start_greeting'    => 'Hi! I’m Ostrakon — a bot for voting to ban spammers in groups.',
     'start_your_groups' => 'Your groups:',
@@ -266,6 +280,17 @@ return [
     // Migration (export / import)
     'panel_migration'         => 'Migration',
     'panel_open_migration'    => '🔄 Migration',
+    'panel_open_erase'        => '🧹 Erase a user’s data',
+    'panel_erase_title'       => 'Erase a user’s data',
+    'panel_erase_intro'       => 'Enter a @username or numeric ID. The user is looked up in THIS group’s stored data (Telegram can’t resolve a @username on its own); the display name is fetched live from Telegram only to confirm and is not stored. Deletion is permanent.',
+    'panel_erase_placeholder'  => '@username or numeric id',
+    'panel_erase_find'        => 'Find',
+    'panel_erase_none'        => 'No stored data found for “{q}” in this group.',
+    'panel_erase_multi'       => 'More than one match — pick the right person:',
+    'panel_erase_name_unknown' => 'name unavailable',
+    'panel_erase_confirm_note' => 'This permanently deletes their messages, their own cast votes and suspect marks, and removes their identity from ban votes (other voters’ records are kept). It cannot be undone.',
+    'panel_erase_delete'      => 'Delete all data',
+    'panel_erase_done'        => 'Done — removed {n} record(s).',
     'panel_export_title'      => 'Export',
     'panel_export_hint'       => 'Download all of the group’s data (settings, participants, vote history) as a single JSON file — to move the group to another instance of the bot. The bot token and active votes are not exported.',
     'panel_export_button'     => '📥 Download JSON',

@@ -6,14 +6,14 @@ declare(strict_types=1);
 /**
  * log.php — view/clear the log (dev tool).
  *
- * Gated by SUPERADMIN_TOKEN (like install/cron/migrations). The log file itself is
- * blocked by .htaccess; we read it server-side.
+ * Gated by DEV_TOKEN — a dedicated secret, empty by default (= endpoint disabled, answers 404).
+ * The log file itself is blocked by .htaccess; we read it server-side.
  *
- *   Show the last N lines: log.php?token=YOUR_SUPERADMIN_TOKEN&n=200
- *   Clear the log:         log.php?token=YOUR_SUPERADMIN_TOKEN&clear=1
+ *   Show the last N lines: log.php?token=YOUR_DEV_TOKEN&n=200
+ *   Clear the log:         log.php?token=YOUR_DEV_TOKEN&clear=1
  *   CLI: php log.php [N] | php log.php clear
  *
- * In production this endpoint can be omitted (or kept behind the token only).
+ * Delete this endpoint in production (or just leave DEV_TOKEN empty, which disables it).
  */
 
 require __DIR__ . '/src/bootstrap.php';

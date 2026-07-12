@@ -8,7 +8,7 @@ declare(strict_types=1);
  *
  * Access: DevAuth (token once → cookie). CLI always allowed.
  *
- *   Overview (counts):        inspect.php?token=TOKEN            (then no token — cookie)
+ *   Overview (counts):        inspect.php?token=YOUR_DEV_TOKEN   (then no token — cookie)
  *   Table dump:               inspect.php?table=votes&n=20
  *   Query (read AND write):   inspect.php?sql=SELECT * FROM {prefix}votes WHERE id=2
  *                             inspect.php?sql=UPDATE {prefix}groups SET ban_threshold=2

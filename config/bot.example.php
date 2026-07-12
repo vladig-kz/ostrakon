@@ -48,7 +48,23 @@ return [
     // then served at APP_URL/<this-slug> and is protected by HTTP Basic Auth (SUPERADMIN_TOKEN).
     // Keeping the address secret is an extra layer on top of the password. Leave EMPTY to disable
     // the page entirely (any request is then a plain 404). install.php fills this in on first run.
+    // It must NOT contain "admin": such a slug would collide with the /admin panel and is ignored.
     'SUPERADMIN_PATH' => '',
+
+    // Worker token — a SEPARATE, low-privilege secret used ONLY to trigger the background worker
+    // (cron.php). It never unlocks the DB, the dev tools or the operator panel, so it is safe to
+    // pass in a URL: URL-based "curl-cron" services can only send it as ?token=..., and that ends
+    // up in access logs. Keeping it distinct from SUPERADMIN_TOKEN means a leaked cron URL does NOT
+    // hand over the master secret. webhook.php's self-poke sends it in the X-Ostrakon-Token header.
+    // Leave EMPTY on a fresh install — install.php generates and writes it for you.
+    'WORKER_TOKEN' => '',
+
+    // Dev tools token — a SEPARATE secret gating the debug endpoints log.php / inspect.php. EMPTY
+    // by default → those endpoints are DISABLED and answer 404 even if the files are left on the
+    // server. Set a random value ONLY while you need them, then clear it (or delete the files).
+    // Kept distinct from SUPERADMIN_TOKEN so leaking one never exposes the other. First visit:
+    // log.php?token=DEV_TOKEN or inspect.php?token=DEV_TOKEN → a cookie handles the rest.
+    'DEV_TOKEN' => '',
 
     // Logging level (threshold): trace | debug | info | warning | error | fatal.
     // Messages at or above the given severity are written. Use 'trace'/'debug' while

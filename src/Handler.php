@@ -73,6 +73,10 @@ final class Handler
                 GroupManager::sendHelp((int) ($message['from']['id'] ?? 0));
                 return;
             }
+            if (($cmd['cmd'] ?? null) === 'privacy') {
+                GroupManager::sendPrivacy((int) ($message['from']['id'] ?? 0));
+                return;
+            }
             // A reply to a notification → a moderation command (forceban/cancelban/protect/unban).
             if (isset($message['reply_to_message']) && Notifier::handleReply($message)) {
                 return;

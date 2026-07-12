@@ -85,7 +85,10 @@ final class Panel
         // protected by HTTP Basic Auth. Checked first so the slug can be anything. Disabled and
         // indistinguishable from any other 404 when SUPERADMIN_PATH is unset.
         $superPath = trim((string) Config::value('bot', 'SUPERADMIN_PATH', ''), '/');
-        if ($superPath !== '' && $route === $superPath) {
+        // The slug must not contain "admin": that would collide with the /admin panel namespace
+        // (this check runs BEFORE the panel routes and could shadow them). Such a slug is ignored,
+        // so the operator page stays disabled rather than breaking the panel.
+        if ($superPath !== '' && stripos($superPath, 'admin') === false && $route === $superPath) {
             self::superadminPage();
             return;
         }
@@ -107,6 +110,11 @@ final class Panel
         }
         if ($route === 'admin/help') {
             self::render('help', ['title' => Lang::get('panel_help', self::lang())]);
+            return;
+        }
+        // Public privacy notice — reachable without login (linked from the page footer and /privacy).
+        if ($route === 'admin/privacy') {
+            self::render('privacy', ['title' => Lang::get('privacy_title', self::lang())]);
             return;
         }
         if (preg_match('#^admin/api/group/(-?\d+)/participants/action$#', $route, $m)) {
@@ -165,6 +173,14 @@ final class Panel
             }
             return;
         }
+        if (preg_match('#^admin/group/(-?\d+)/erase$#', $route, $m)) {
+            if ($method === 'POST') {
+                self::erasePost((int) $m[1]);
+            } else {
+                self::erasePage((int) $m[1]);
+            }
+            return;
+        }
         if (preg_match('#^admin/group/(-?\d+)$#', $route, $m)) {
             self::group((int) $m[1]);
             return;
@@ -219,6 +235,34 @@ final class Panel
             return null;
         }
         if (!GroupManager::canManage($chatId, (int) $user['id'])) {
+            if ($json) {
+                self::json(['ok' => false, 'error' => 'forbidden'], 403);
+            } else {
+                self::error(403, Lang::get('panel_not_manager', self::lang()));
+            }
+            return null;
+        }
+        return $user;
+    }
+
+    /**
+     * Guard for owner-only actions (export/import migration): the user must be the group OWNER
+     * (creator), not merely a manager. Otherwise sends the response and returns null.
+     *
+     * @return array{id:int, name:string, username:?string}|null
+     */
+    private static function guardOwner(int $chatId, bool $json): ?array
+    {
+        $user = PanelAuth::user();
+        if ($user === null) {
+            if ($json) {
+                self::json(['ok' => false, 'error' => 'auth'], 401);
+            } else {
+                self::redirectToLogin();
+            }
+            return null;
+        }
+        if (!GroupManager::isOwner($chatId, (int) $user['id'])) {
             if ($json) {
                 self::json(['ok' => false, 'error' => 'forbidden'], 403);
             } else {
@@ -384,6 +428,7 @@ final class Panel
             'title'     => (string) ($group['title'] ?? ('#' . $chatId)),
             'group'     => $group,
             'canManage' => GroupManager::canManage($chatId, (int) $user['id']),
+            'isOwner'   => GroupManager::isOwner($chatId, (int) $user['id']),
             'notify'    => GroupManager::getNotifyPrefs($chatId, (int) $user['id']),
             'csrf'      => PanelAuth::csrfToken(),
             'flash'     => self::takeFlash(),
@@ -483,7 +528,7 @@ final class Panel
     /** "Migration" page: export download + import upload (managers only). */
     private static function migrationPage(int $chatId): void
     {
-        if (self::guardManage($chatId, false) === null) {
+        if (self::guardOwner($chatId, false) === null) {
             return;
         }
         $group = GroupManager::getGroup($chatId);
@@ -509,7 +554,7 @@ final class Panel
     /** Stream the group's export as a JSON file download (managers only). */
     private static function exportDownload(int $chatId): void
     {
-        if (self::guardManage($chatId, false) === null) {
+        if (self::guardOwner($chatId, false) === null) {
             return;
         }
         if (GroupManager::getGroup($chatId) === null) {
@@ -526,7 +571,7 @@ final class Panel
     /** Handle an uploaded export file (POST, managers only). */
     private static function migrationImport(int $chatId): void
     {
-        if (self::guardManage($chatId, false) === null) {
+        if (self::guardOwner($chatId, false) === null) {
             return;
         }
         if (!PanelAuth::csrfCheck((string) ($_POST['csrf'] ?? ''))) {
@@ -565,6 +610,88 @@ final class Panel
             self::setFlash(Lang::get($key, self::lang()));
         }
         self::redirect($back);
+    }
+
+    /** "Erase a user's data" page — search form (owner/managers only). */
+    private static function erasePage(int $chatId): void
+    {
+        if (self::guardManage($chatId, false) === null) {
+            return;
+        }
+        $group = GroupManager::getGroup($chatId);
+        if ($group === null) {
+            self::error(404, Lang::get('panel_not_found', self::lang()));
+            return;
+        }
+        self::render('erase', [
+            'title'      => (string) ($group['title'] ?? ('#' . $chatId)),
+            'group'      => $group,
+            'query'      => '',
+            'searched'   => false,
+            'candidates' => [],
+            'csrf'       => PanelAuth::csrfToken(),
+            'flash'      => self::takeFlash(),
+        ]);
+    }
+
+    /** POST: look up a user (action=lookup) or erase them (action=delete). Owner/managers only. */
+    private static function erasePost(int $chatId): void
+    {
+        if (self::guardManage($chatId, false) === null) {
+            return;
+        }
+        if (!PanelAuth::csrfCheck((string) ($_POST['csrf'] ?? ''))) {
+            self::error(403, Lang::get('panel_not_manager', self::lang()));
+            return;
+        }
+        $group = GroupManager::getGroup($chatId);
+        if ($group === null) {
+            self::error(404, Lang::get('panel_not_found', self::lang()));
+            return;
+        }
+
+        // Step 2: confirmed deletion (acts on the resolved numeric user_id, re-checked above).
+        if ((string) ($_POST['action'] ?? '') === 'delete') {
+            $uid = (int) ($_POST['user_id'] ?? 0);
+            if ($uid !== 0) {
+                $counts = GroupManager::eraseUserData($chatId, $uid);
+                self::setFlash(Lang::get('panel_erase_done', self::lang(), ['n' => (string) array_sum($counts)]));
+            }
+            self::redirect(self::baseUrl() . '/admin/group/' . $chatId . '/erase');
+            return;
+        }
+
+        // Step 1: look the user up in THIS group's stored data and fetch a live display name.
+        $query      = trim((string) ($_POST['query'] ?? ''));
+        $candidates = GroupManager::findParticipantsByQuery($chatId, $query);
+        foreach ($candidates as &$c) {
+            $c['user_id'] = (int) $c['user_id'];
+            $c['name']    = self::liveName($chatId, (int) $c['user_id']);
+        }
+        unset($c);
+
+        self::render('erase', [
+            'title'      => (string) ($group['title'] ?? ('#' . $chatId)),
+            'group'      => $group,
+            'query'      => $query,
+            'searched'   => true,
+            'candidates' => $candidates,
+            'csrf'       => PanelAuth::csrfToken(),
+            'flash'      => null,
+        ]);
+    }
+
+    /** Live display name (first + last) for a user via getChatMember — for display only, never stored. '' if unavailable. */
+    private static function liveName(int $chatId, int $userId): string
+    {
+        $m = Bot::call('getChatMember', ['chat_id' => $chatId, 'user_id' => $userId], true);
+        if (is_array($m) && isset($m['user'])) {
+            $name = trim((string) ($m['user']['first_name'] ?? '') . ' ' . (string) ($m['user']['last_name'] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+        return '';
     }
 
     /** JSON: participants list (search/sort/paginate) for the JS table. */
