@@ -1,0 +1,71 @@
+﻿name: "🤔 Неудобно / непонятно (UX)"
+description: "Работает как задумано, но задумано неудобно или неочевидно."
+title: "[UX] "
+labels: ["ux", "beta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Этот шаблон — не про баги, а про **удобство и понятность**. Здесь нет «неправильных»
+        ответов: даже «я не понял, как запустить голосование» — ценный сигнал. Пишите как
+        есть, можно коротко, можно длинно.
+  - type: dropdown
+    id: prior-experience
+    attributes:
+      label: "Пользовались раньше voteban-ботами (banofbot и подобными)?"
+      description: "Вызов голосования у нас такой же — reply + упоминание бота. Нам важно знать, с какой привычкой вы пришли."
+      options:
+        - "Да, пользовался banofbot или похожим"
+        - "Слышал, но не пользовался"
+        - "Нет, это первый такой бот"
+    validations:
+      required: true
+  - type: dropdown
+    id: first-vote
+    attributes:
+      label: "Первый запуск голосования — как прошёл?"
+      options:
+        - "Сразу понял и получилось"
+        - "Понял не сразу, но разобрался"
+        - "Не понял, как запустить / решил, что не работает"
+        - "Не пробовал запускать голосование"
+    validations:
+      required: true
+  - type: textarea
+    id: surprise
+    attributes:
+      label: "Что повело себя не так, как вы ожидали?"
+      description: "Именно ожидания, а не баги: где бот сделал не то, что вы привыкли ждать от такого бота."
+    validations:
+      required: false
+  - type: textarea
+    id: what-confused
+    attributes:
+      label: "Что было неудобно или непонятно"
+      description: "Любой момент: вызов голосования, панель, уведомления, режимы, аксакалы, формулировки."
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: "А как вы ожидали, что это должно работать?"
+      description: "Чем ваша интуиция «идеального анти-спам-бота на голосованиях» расходится с тем, что есть."
+    validations:
+      required: false
+  - type: dropdown
+    id: keep-using
+    attributes:
+      label: "Оставите бота в группе после теста?"
+      description: "Честно — это для нас самый важный сигнал."
+      options:
+        - "Да, буду пользоваться"
+        - "Пока не решил"
+        - "Нет, сниму"
+    validations:
+      required: false
+  - type: textarea
+    id: why-remove
+    attributes:
+      label: "Если «нет» или «не решил» — почему?"
+    validations:
+      required: false

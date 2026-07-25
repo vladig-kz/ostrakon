@@ -1,0 +1,68 @@
+﻿name: "🐞 Баг: работает не как в документации"
+description: "Поведение бота расходится с тем, что написано в docs."
+title: "[BUG] "
+labels: ["bug", "beta"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что помогаете обкатать Ostrakon. Этот шаблон — для случаев, когда бот
+        ведёт себя **не так, как описано в документации**. Чем точнее шаги — тем быстрее
+        удастся воспроизвести.
+  - type: input
+    id: doc-ref
+    attributes:
+      label: "Что говорит документация"
+      description: "Раздел/файл docs, с которым расходится поведение (можно ссылкой или цитатой)."
+      placeholder: "for-admins.ru.md, раздел «Режимы: light и full»"
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Шаги воспроизведения"
+      description: "По шагам, как дойти до проблемы."
+      placeholder: |
+        1. Добавил бота в группу как владелец
+        2. Ответил на сообщение участника упоминанием @bot
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Что ожидалось (по доке)"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Что произошло на самом деле"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: "Режим группы"
+      options:
+        - "light"
+        - "full"
+        - "не знаю / не важно"
+    validations:
+      required: false
+  - type: dropdown
+    id: instance
+    attributes:
+      label: "Инстанс"
+      options:
+        - "Публичный тестовый (ostrakon.deadhand.kz)"
+        - "Свой хостинг"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: "Дополнительно"
+      description: "Скриншоты, тип группы (обычная/супергруппа/форум), что угодно полезное."
+    validations:
+      required: false
