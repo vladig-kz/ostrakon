@@ -26,6 +26,7 @@ $me   = PanelAuth::user();
     <a class="brand" href="<?= htmlspecialchars($base) ?>/admin">
         <img class="brand-mark" src="<?= htmlspecialchars($base) ?>/assets/favicon.svg" alt="" width="26" height="26">Ostrakon</a>
     <span class="spacer"></span>
+    <a class="btn-link" href="<?= htmlspecialchars($base) ?>/admin/about"><?= htmlspecialchars(Lang::get('panel_about', $lng)) ?></a>
     <?php foreach (Lang::available() as $code => $name): ?>
         <?php if ($code === $lng): ?>
             <span class="btn-link lang-current"><?= htmlspecialchars($name) ?></span>

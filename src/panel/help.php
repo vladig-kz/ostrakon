@@ -8,8 +8,7 @@ $lng  = Panel::lang();
 $base = Panel::baseUrl();
 
 $sections = [
-    'history'      => ['help_history_t', 'help_history_b'],
-    'modes'        => ['help_modes_t', 'help_modes_b'],
+    'modes'       => ['help_modes_t', 'help_modes_b'],
     'privacy'      => ['help_privacy_t', 'help_privacy_b'],
     'voting'       => ['help_voting_t', 'help_voting_b'],
     'panel'        => ['help_panel_t', 'help_panel_b'],
@@ -20,6 +19,7 @@ $sections = [
 ];
 ?>
 <a class="button is-light mb-4" href="<?= htmlspecialchars($base) ?>/admin"><?= htmlspecialchars(Lang::get('panel_to_home', $lng)) ?></a>
+<a class="button is-light mb-4" href="<?= htmlspecialchars($base) ?>/admin/about"><?= htmlspecialchars(Lang::get('panel_about', $lng)) ?></a>
 
 <h1 class="title is-3"><?= htmlspecialchars(Lang::get('panel_help', $lng)) ?></h1>
 

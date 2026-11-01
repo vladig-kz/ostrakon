@@ -3,7 +3,7 @@
 // Copyright (C) 2026 Vladimir Ignatov
 /**
  * Group "Migration" page: export (download JSON) + import (upload JSON).
- * Access checked in Panel::migrationPage (manager of this group).
+ * Access checked in Panel::migrationPage (owner of this group).
  * @var array<string, mixed> $group      a groups table row
  * @var bool                 $hasHistory the group already holds finished votes
  * @var string               $csrf

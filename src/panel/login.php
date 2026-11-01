@@ -24,4 +24,5 @@ $lng = Panel::lang();
                     data-request-access="write"></script>
         </div>
     <?php endif; ?>
+    <p class="mt-4"><a href="<?= htmlspecialchars(Panel::baseUrl()) ?>/admin/about"><?= htmlspecialchars(Lang::get('panel_about_link', $lng)) ?></a></p>
 </div>

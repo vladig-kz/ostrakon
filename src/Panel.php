@@ -112,6 +112,15 @@ final class Panel
             self::render('help', ['title' => Lang::get('panel_help', self::lang())]);
             return;
         }
+        // Public "about the bot" page — reachable without login (linked from the top bar and the login page).
+        if ($route === 'admin/about') {
+            self::render('about', [
+                'title'       => Lang::get('panel_about', self::lang()),
+                'botUsername' => (string) Config::value('bot', 'BOT_USERNAME', ''),
+                'sourceUrl'   => (string) Config::value('bot', 'SOURCE_URL', 'https://github.com/vladig-kz/ostrakon'),
+            ]);
+            return;
+        }
         // Public privacy notice — reachable without login (linked from the page footer and /privacy).
         if ($route === 'admin/privacy') {
             self::render('privacy', ['title' => Lang::get('privacy_title', self::lang())]);
@@ -535,7 +544,7 @@ final class Panel
         self::redirect(self::baseUrl() . '/admin/group/' . $chatId . '/settings');
     }
 
-    /** "Migration" page: export download + import upload (managers only). */
+    /** "Migration" page: export download + import upload (owner only). */
     private static function migrationPage(int $chatId): void
     {
         if (self::guardOwner($chatId, false) === null) {
@@ -561,7 +570,7 @@ final class Panel
         ]);
     }
 
-    /** Stream the group's export as a JSON file download (managers only). */
+    /** Stream the group's export as a JSON file download (owner only). */
     private static function exportDownload(int $chatId): void
     {
         if (self::guardOwner($chatId, false) === null) {
@@ -578,7 +587,7 @@ final class Panel
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
-    /** Handle an uploaded export file (POST, managers only). */
+    /** Handle an uploaded export file (POST, owner only). */
     private static function migrationImport(int $chatId): void
     {
         if (self::guardOwner($chatId, false) === null) {
