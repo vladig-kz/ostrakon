@@ -12,10 +12,17 @@
     function defaultSorts() { return [{ col: 'started_at', dir: 'desc' }]; }
     var state = { q: '', status: '', sorts: defaultSorts(), page: 1 };
 
-    var body   = document.getElementById('j-body');
-    var pager  = document.getElementById('j-pager');
-    var search = document.getElementById('j-search');
-    var status = document.getElementById('j-status');
+    var body    = document.getElementById('j-body');
+    var pager   = document.getElementById('j-pager');
+    var search  = document.getElementById('j-search');
+    var status  = document.getElementById('j-status');
+    var sortSel = document.getElementById('j-sortsel');
+
+    // Column names, read before the sort arrows are added: on phones each cell shows its
+    // column name as a label (the table turns into cards, see .cards-mobile in admin.css).
+    var labels = [];
+    var heads = document.querySelectorAll('thead th');
+    for (var h = 0; h < heads.length; h++) { labels.push(heads[h].textContent.trim()); }
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -51,20 +58,25 @@
         return '';
     }
 
+    // A data cell labelled with its column name (shown only in the phone card layout).
+    function cell(col, content) {
+        return '<td data-label="' + esc(labels[col] || '') + '">' + content + '</td>';
+    }
+
     function renderRows(rows) {
         if (!rows.length) { body.innerHTML = rowMsg(i18n.empty); return; }
         var html = '';
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i];
             html += '<tr>';
-            html += '<td>' + nameCell(r.target_username, r.target_id) + '</td>';
-            html += '<td>' + nameCell(r.initiator_username, r.initiator_id) + '</td>';
-            html += '<td>' + statusCell(r.status) + '</td>';
-            html += '<td>' + num(r.for_sum) + '</td>';
-            html += '<td>' + num(r.against_sum) + '</td>';
-            html += '<td>' + dt(r.started_at) + '</td>';
-            html += '<td>' + dt(r.finished_at) + '</td>';
-            html += '<td>' + actionsCell(r) + '</td>';
+            html += '<td>' + nameCell(r.target_username, r.target_id) + '</td>'; // the card's heading — no label
+            html += cell(1, nameCell(r.initiator_username, r.initiator_id));
+            html += cell(2, statusCell(r.status));
+            html += cell(3, num(r.for_sum));
+            html += cell(4, num(r.against_sum));
+            html += cell(5, dt(r.started_at));
+            html += cell(6, dt(r.finished_at));
+            html += '<td class="cell-actions">' + actionsCell(r) + '</td>';
             html += '</tr>';
         }
         body.innerHTML = html;
@@ -181,10 +193,32 @@
             var arrow = state.sorts[idx].dir === 'asc' ? '↑' : '↓';
             s.innerHTML = ' ' + arrow + (multi ? '<sup>' + (idx + 1) + '</sup>' : '');
         }
+        // The phone select shows the first sort level.
+        if (sortSel) { sortSel.value = state.sorts[0].col + ':' + state.sorts[0].dir; }
     }
 
     for (var t = 0; t < ths.length; t++) {
         ths[t].addEventListener('click', onHeader);
+    }
+
+    // Phone sort select: every sortable column in both directions (single-level sort).
+    function fillSortSelect() {
+        if (!sortSel) { return; }
+        var opts = '';
+        for (var j = 0; j < ths.length; j++) {
+            var col  = ths[j].getAttribute('data-sort');
+            var name = esc(ths[j].textContent.trim());
+            opts += '<option value="' + col + ':desc">' + name + ' ↓</option>';
+            opts += '<option value="' + col + ':asc">' + name + ' ↑</option>';
+        }
+        sortSel.innerHTML = opts;
+        sortSel.addEventListener('change', function () {
+            var p = this.value.split(':');
+            state.sorts = [{ col: p[0], dir: p[1] }];
+            state.page = 1;
+            markSort();
+            load();
+        });
     }
 
     // debounced search
@@ -206,6 +240,7 @@
         });
     }
 
+    fillSortSelect(); // before markSort: the headers have no arrows yet
     markSort();
     load();
 })();

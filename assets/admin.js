@@ -15,9 +15,16 @@
     var state = { q: '', sorts: defaultSorts(), page: 1 };
     var viewerIsOwner = false; // set from each API response; gates the manager grant/revoke buttons
 
-    var body   = document.getElementById('p-body');
-    var pager  = document.getElementById('p-pager');
-    var search = document.getElementById('p-search');
+    var body    = document.getElementById('p-body');
+    var pager   = document.getElementById('p-pager');
+    var search  = document.getElementById('p-search');
+    var sortSel = document.getElementById('p-sortsel');
+
+    // Column names, read before the sort arrows are added: on phones each cell shows its
+    // column name as a label (the table turns into cards, see .cards-mobile in admin.css).
+    var labels = [];
+    var heads = document.querySelectorAll('thead th');
+    for (var h = 0; h < heads.length; h++) { labels.push(heads[h].textContent.trim()); }
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -53,11 +60,13 @@
     }
 
     function actionsCell(r) {
+        // Admins/owners can't be put to a vote at all, so "protect" is pointless for them
+        // ("unprotect" stays, to clear a flag set before they became an admin).
         var html = r.banned_at
             ? btn('unban', i18n.unban, r.user_id, 'is-danger is-outlined')
             : (Number(r.is_protected) === 1
                 ? btn('unprotect', i18n.unprotect, r.user_id, 'is-link is-outlined')
-                : btn('protect', i18n.protect, r.user_id, 'is-link'));
+                : (Number(r.is_admin) === 1 ? '' : btn('protect', i18n.protect, r.user_id, 'is-link')));
         // Manager grant/revoke — owner only, for admin (non-owner) targets.
         if (viewerIsOwner && Number(r.is_admin) === 1 && Number(r.is_owner) !== 1) {
             html += Number(r.can_manage) === 1
@@ -92,20 +101,26 @@
         return '<button class="button ' + cls + '" data-action="' + action + '" data-user="' + esc(userId) + '">' + esc(label) + '</button>';
     }
 
+    // A data cell labelled with its column name (shown only in the phone card layout).
+    function cell(col, content) {
+        return '<td data-label="' + esc(labels[col] || '') + '">' + content + '</td>';
+    }
+
     function renderRows(rows) {
         if (!rows.length) { body.innerHTML = rowMsg(i18n.empty); return; }
         var html = '';
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i];
+            var k = 1;
             html += '<tr>';
-            html += '<td>' + userCell(r) + '</td>';
-            html += '<td>' + esc(String(r.joined_at || '').slice(0, 16)) + '</td>';
+            html += '<td>' + userCell(r) + '</td>'; // the card's heading — no label
+            html += cell(k++, esc(String(r.joined_at || '').slice(0, 16)));
             if (full) {
-                html += '<td>' + elderCell(r) + '</td>';
-                html += '<td>' + esc(r.msg_count) + '</td>';
+                html += cell(k++, elderCell(r));
+                html += cell(k++, esc(r.msg_count));
             }
-            html += '<td>' + statusCell(r) + '</td>';
-            html += '<td>' + actionsCell(r) + '</td>';
+            html += cell(k++, statusCell(r));
+            html += '<td class="cell-actions">' + actionsCell(r) + '</td>';
             html += '</tr>';
         }
         body.innerHTML = html;
@@ -226,10 +241,32 @@
             var arrow = state.sorts[idx].dir === 'asc' ? '↑' : '↓';
             s.innerHTML = ' ' + arrow + (multi ? '<sup>' + (idx + 1) + '</sup>' : '');
         }
+        // The phone select shows the first sort level.
+        if (sortSel) { sortSel.value = state.sorts[0].col + ':' + state.sorts[0].dir; }
     }
 
     for (var t = 0; t < ths.length; t++) {
         ths[t].addEventListener('click', onHeader);
+    }
+
+    // Phone sort select: every sortable column in both directions (single-level sort).
+    function fillSortSelect() {
+        if (!sortSel) { return; }
+        var opts = '';
+        for (var j = 0; j < ths.length; j++) {
+            var col  = ths[j].getAttribute('data-sort');
+            var name = esc(ths[j].textContent.trim());
+            opts += '<option value="' + col + ':desc">' + name + ' ↓</option>';
+            opts += '<option value="' + col + ':asc">' + name + ' ↑</option>';
+        }
+        sortSel.innerHTML = opts;
+        sortSel.addEventListener('change', function () {
+            var p = this.value.split(':');
+            state.sorts = [{ col: p[0], dir: p[1] }];
+            state.page = 1;
+            markSort();
+            load();
+        });
     }
 
     // debounced search
@@ -242,6 +279,7 @@
         });
     }
 
+    fillSortSelect(); // before markSort: the headers have no arrows yet
     markSort();
     load();
 })();
