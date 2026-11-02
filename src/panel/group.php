@@ -5,6 +5,7 @@
  * Group landing page (admin-only — checked in Panel::group).
  * @var array<string, mixed>                  $group     a groups table row
  * @var bool                                  $canManage viewer may manage settings
+ * @var bool                                  $noDelete  the bot should delete messages but lacks the right
  * @var array{votes:bool,bans:bool,elders:bool} $notify  viewer's own notification flags
  * @var string                                $csrf
  * @var string|null                           $flash
@@ -23,6 +24,10 @@ $name = (isset($group['title']) && (string) $group['title'] !== '')
         chat_id <code><?= (int) $group['chat_id'] ?></code>
         · <?= htmlspecialchars(Lang::get('panel_group_mode', $lng)) ?>: <strong><?= htmlspecialchars((string) ($group['mode'] ?? '')) ?></strong>
     </p>
+
+    <?php if (!empty($noDelete)): ?>
+        <div class="notification is-warning is-light"><?= htmlspecialchars(Lang::get('panel_warn_no_delete', $lng)) ?></div>
+    <?php endif; ?>
 
     <?php $canManage = !empty($canManage); $isOwner = !empty($isOwner); ?>
     <div class="buttons">

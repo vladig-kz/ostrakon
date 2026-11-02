@@ -155,10 +155,7 @@ final class VoteManager
 
         // --- Delete the activation message (reply with @mention) ---
         if ((int) ($group['delete_trigger_message'] ?? 0) === 1) {
-            Bot::call('deleteMessage', [
-                'chat_id'    => $chatId,
-                'message_id' => (int) ($message['message_id'] ?? 0),
-            ]);
+            self::deleteForeign($chatId, (int) ($message['message_id'] ?? 0), 'activation');
         }
 
         Logger::info('VoteManager: vote created', [
@@ -399,6 +396,20 @@ final class VoteManager
         return self::isElder($group, $participant) ? (float) $group['elder_weight'] : 1.0;
     }
 
+    /**
+     * Delete a member's message (not the bot's own). Unlike its own messages, the bot needs the
+     * "Delete messages" right for this, so a failure is logged as a WARNING with the reason.
+     */
+    private static function deleteForeign(int $chatId, int $messageId, string $what): void
+    {
+        $res = Bot::call('deleteMessage', ['chat_id' => $chatId, 'message_id' => $messageId], true);
+        if ($res === null) {
+            Logger::warning("VoteManager: could not delete the {$what} message (no \"Delete messages\" right, or older than 48h, or already deleted)", null, [
+                'chat_id' => $chatId, 'message_id' => $messageId, 'error' => Bot::lastErrorDescription(),
+            ]);
+        }
+    }
+
     /** "You can't do this right now" with auto-deletion. */
     private static function deny(int $chatId, array $group, ?int $threadId = null): void
     {
@@ -636,7 +647,7 @@ final class VoteManager
             GroupManager::onMemberBanned($chatId, $targetId);
 
             if ((int) ($group['delete_spam_on_ban'] ?? 0) === 1 && !empty($vote['trigger_msg_id'])) {
-                Bot::call('deleteMessage', ['chat_id' => $chatId, 'message_id' => (int) $vote['trigger_msg_id']]);
+                self::deleteForeign($chatId, (int) $vote['trigger_msg_id'], 'spam');
             }
 
             $base        = Lang::get('ban_success', $lang, ['target' => self::nameById($chatId, $targetId, $lang)]);

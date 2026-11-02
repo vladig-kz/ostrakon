@@ -57,8 +57,18 @@ $i18n = [
         </div>
     </div>
 
+    <?php // Phones: the table becomes cards (no headers to click), so sorting is a select. ?>
+    <div class="field is-hidden-tablet">
+        <label class="label is-small" for="j-sortsel"><?= htmlspecialchars(Lang::get('panel_sort', $lng)) ?></label>
+        <div class="control">
+            <div class="select is-fullwidth">
+                <select id="j-sortsel"></select>
+            </div>
+        </div>
+    </div>
+
     <div class="table-container">
-        <table class="table is-fullwidth is-hoverable">
+        <table class="table is-fullwidth is-hoverable cards-mobile">
             <thead>
                 <tr>
                     <th class="sortable" data-sort="target_username"><?= htmlspecialchars(Lang::get('panel_jcol_target', $lng)) ?></th>
@@ -86,4 +96,4 @@ window.OSTRAKON = {
     i18n:      <?= json_encode($i18n, JSON_UNESCAPED_UNICODE) ?>
 };
 </script>
-<script src="<?= htmlspecialchars($base) ?>/assets/journal.js"></script>
+<script src="<?= htmlspecialchars(Panel::asset('journal.js')) ?>"></script>

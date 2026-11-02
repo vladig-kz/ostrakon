@@ -123,6 +123,7 @@ re-running it is safe.
 | `APP_URL` | Full public address (host+path, no trailing `/`); the single source of all URLs |
 | `BOT_TOKEN` | Token from @BotFather |
 | `BOT_USERNAME` | Bot username without `@` (Login Widget + mention detection) |
+| `SOURCE_URL` | Public source code repository, linked from the "About" page. Optional (defaults to the upstream repository). AGPL-3.0 requires offering the source to users of a network service: if you run a **modified** copy, point it at your fork |
 | `WEBHOOK_SECRET` | Verified against the `X-Telegram-Bot-Api-Secret-Token` header on every update. **Use a long random value** — anyone who learns it can forge updates (fake votes/bans) |
 | `WORKER_TOKEN` | Low-privilege secret that ONLY triggers the worker (`cron.php`). The webhook self-poke sends it in the `X-Ostrakon-Token` header; URL-cron services pass it as `?token=`. Kept separate from `SUPERADMIN_TOKEN` so a cron URL in access logs can't leak the master secret. Generated on the first `install.php` run |
 | `SUPERADMIN_TOKEN` | `base64("login:password")`. Gates `install.php`/`migrations/run.php` over HTTP, the dev tools, **and** is the HTTP Basic Auth credential for the operator page. Keep it OUT of URLs. Set on the first `install.php` run |

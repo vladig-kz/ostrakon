@@ -91,6 +91,15 @@ final class GroupManager
             [$chatId, $userId]
         );
         if ($row !== null) {
+            // Keep the stored username fresh: the row may have been created without one
+            // (panel actions) or the user may have changed it since.
+            if ($username !== null && $username !== '' && $username !== ($row['username'] ?? null)) {
+                DB::run(
+                    "UPDATE {$t} SET username = ? WHERE chat_id = ? AND user_id = ?",
+                    [$username, $chatId, $userId]
+                );
+                $row['username'] = $username;
+            }
             return $row;
         }
 
@@ -520,6 +529,24 @@ final class GroupManager
     }
 
     /**
+     * Whether the bot may delete members' messages (the activation "@bot" reply, the spam message
+     * after a ban). Its own messages it can delete without any right. Like botCanEnforce, returns
+     * true when it can't be checked, so the panel doesn't show a false warning.
+     */
+    public static function botCanDelete(int $chatId): bool
+    {
+        $bid = self::botId();
+        if ($bid === 0) {
+            return true;
+        }
+        $m = self::getMember($chatId, $bid);
+        if ($m === null) {
+            return true;
+        }
+        return ($m['status'] ?? '') === 'administrator' && !empty($m['can_delete_messages']);
+    }
+
+    /**
      * Strict "does the bot have the ban right" check for the onboarding flow: unlike botCanEnforce
      * (which returns true when it can't check, to avoid a false ⚠️), this returns FALSE on any
      * uncertainty — so onboarding keeps waiting rather than falsely declaring success.
@@ -858,6 +885,7 @@ final class GroupManager
         $t      = DB::table('participants');
         $where  = 'chat_id = ?';
         $params = [$chatId];
+        $search = ltrim($search, '@'); // usernames are stored without the leading @
         if ($search !== '') {
             $where   .= ' AND (username LIKE ? OR CAST(user_id AS CHAR) LIKE ?)';
             $params[] = '%' . $search . '%';
@@ -937,7 +965,10 @@ final class GroupManager
             $where .= ' AND (CAST(v.target_id AS CHAR) LIKE ? OR CAST(v.initiator_id AS CHAR) LIKE ?'
                     . ' OR pt.username LIKE ? OR pi.username LIKE ? OR v.trigger_text LIKE ?)';
             $like = '%' . $search . '%';
-            array_push($params, $like, $like, $like, $like, $like);
+            // Usernames are stored without the leading @; the trigger text is matched as typed.
+            $name     = ltrim($search, '@');
+            $nameLike = '%' . ($name !== '' ? $name : $search) . '%';
+            array_push($params, $like, $like, $nameLike, $nameLike, $like);
         }
 
         $total = (int) DB::fetchColumn("SELECT COUNT(*) {$joins} {$where}", $params);

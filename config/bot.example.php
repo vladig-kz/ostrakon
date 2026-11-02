@@ -31,6 +31,11 @@ return [
     'BOT_TOKEN'    => '000000000:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX', // token from @BotFather
     'BOT_USERNAME' => 'YourBot',                                       // without @; needed for the Login Widget and "@botname" texts
 
+    // Public source code repository, linked from the "About" page. AGPL-3.0 requires offering the
+    // source to users of a network service: if you run a MODIFIED copy, point this at your fork.
+    // Optional — when missing, the upstream repository is shown.
+    'SOURCE_URL' => 'https://github.com/vladig-kz/ostrakon',
+
     // Webhook secret — passed to setWebhook and verified in the
     // X-Telegram-Bot-Api-Secret-Token header on every incoming update.
     'WEBHOOK_SECRET' => 'changeme-random-string',

@@ -125,5 +125,5 @@ window.OSTRAKON_SIM = {
     i18n:  <?= json_encode($i18n, JSON_UNESCAPED_UNICODE) ?>
 };
 </script>
-<script src="<?= htmlspecialchars($base) ?>/assets/simulator.js"></script>
+<script src="<?= htmlspecialchars(Panel::asset('simulator.js')) ?>"></script>
 <?php endif; ?>

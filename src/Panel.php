@@ -443,9 +443,13 @@ final class Panel
             self::error(404, Lang::get('panel_not_found', self::lang()));
             return;
         }
+        // Warn only if the bot is configured to delete messages but lacks the right to.
+        $wantsDelete = (int) ($group['delete_trigger_message'] ?? 0) === 1
+            || (int) ($group['delete_spam_on_ban'] ?? 0) === 1;
         self::render('group', [
             'title'     => (string) ($group['title'] ?? ('#' . $chatId)),
             'group'     => $group,
+            'noDelete'  => $wantsDelete && !GroupManager::botCanDelete($chatId),
             'canManage' => GroupManager::canManage($chatId, (int) $user['id']),
             'isOwner'   => GroupManager::isOwner($chatId, (int) $user['id']),
             'notify'    => GroupManager::getNotifyPrefs($chatId, (int) $user['id']),
@@ -1083,6 +1087,16 @@ final class Panel
     public static function baseUrl(): string
     {
         return rtrim((string) Config::value('bot', 'APP_URL', ''), '/');
+    }
+
+    /**
+     * URL of a static asset (CSS/JS) with its modification time as a version: hosts cache static
+     * files for a long time, so a re-uploaded file gets a new URL and browsers fetch it at once.
+     */
+    public static function asset(string $file): string
+    {
+        $mtime = @filemtime(dirname(__DIR__) . '/assets/' . $file);
+        return self::baseUrl() . '/assets/' . $file . ($mtime !== false ? '?v=' . $mtime : '');
     }
 
     /** The path part of APP_URL without a trailing slash ('' for domain root, '/ostrakon' for a subfolder). */

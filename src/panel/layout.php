@@ -18,8 +18,8 @@ $me   = PanelAuth::user();
     <link rel="icon" type="image/svg+xml" href="<?= htmlspecialchars($base) ?>/assets/favicon.svg">
     <link rel="icon" type="image/png" href="<?= htmlspecialchars($base) ?>/assets/favicon.png">
     <link rel="apple-touch-icon" href="<?= htmlspecialchars($base) ?>/assets/favicon.png">
-    <link rel="stylesheet" href="<?= htmlspecialchars($base) ?>/assets/bulma.min.css">
-    <link rel="stylesheet" href="<?= htmlspecialchars($base) ?>/assets/admin.css">
+    <link rel="stylesheet" href="<?= htmlspecialchars(Panel::asset('bulma.min.css')) ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(Panel::asset('admin.css')) ?>">
 </head>
 <body>
 <header class="topbar">
